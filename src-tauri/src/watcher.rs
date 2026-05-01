@@ -375,6 +375,8 @@ mod tests {
 
     /// Helper: create and start a watcher with short debounce.
     /// Returns both the watcher (keeps it alive) and the receiver.
+    ///
+    /// **Must** be called from a tokio runtime (e.g. `#[tokio::test]`).
     fn start_watcher(
         root: &Path,
     ) -> (VaultWatcher, mpsc::UnboundedReceiver<WatchEvent>) {
@@ -397,8 +399,8 @@ mod tests {
         events
     }
 
-    #[test]
-    fn test_create_file_emits_event() {
+    #[tokio::test]
+    async fn test_create_file_emits_event() {
         let dir = setup_vault();
         let (_w, mut rx) = start_watcher(dir.path());
 
@@ -414,8 +416,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_modify_file_emits_event() {
+    #[tokio::test]
+    async fn test_modify_file_emits_event() {
         let dir = setup_vault();
         let note_path = dir.path().join("edit.md");
         fs::write(&note_path, "v1").unwrap();
@@ -433,8 +435,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_delete_file_emits_event() {
+    #[tokio::test]
+    async fn test_delete_file_emits_event() {
         let dir = setup_vault();
         let note_path = dir.path().join("delete-me.md");
         fs::write(&note_path, "bye").unwrap();
@@ -452,8 +454,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_hidden_files_ignored() {
+    #[tokio::test]
+    async fn test_hidden_files_ignored() {
         let dir = setup_vault();
         let (_w, mut rx) = start_watcher(dir.path());
 
@@ -479,8 +481,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_non_markdown_ignored() {
+    #[tokio::test]
+    async fn test_non_markdown_ignored() {
         let dir = setup_vault();
         let (_w, mut rx) = start_watcher(dir.path());
 
@@ -496,8 +498,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_coalesce_modified_after_created() {
+    #[tokio::test]
+    async fn test_coalesce_modified_after_created() {
         let dir = setup_vault();
         let (_w, mut rx) = start_watcher(dir.path());
 
@@ -523,8 +525,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_bulk_change_emitted_for_many_files() {
+    #[tokio::test]
+    async fn test_bulk_change_emitted_for_many_files() {
         let dir = setup_vault();
         let (_w, mut rx) = start_watcher(dir.path());
 

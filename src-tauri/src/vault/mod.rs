@@ -202,13 +202,43 @@ impl VaultManager {
 
     // ----- Path utilities ---------------------------------------------------
 
-    /// Join `relative` with the vault root (private helper).
-    fn vault_path(&self, relative: &str) -> PathBuf {
-        self.root.join(relative)
+    /// Join `relative` with the vault root, validating against path traversal.
+    ///
+    /// Returns an error if the resolved path escapes the vault root.
+    fn vault_path(&self, relative: &str) -> io::Result<PathBuf> {
+        // Reject paths with null bytes (potential injection on some platforms).
+        if relative.contains('\0') {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "path contains null byte",
+            ));
+        }
+
+        let resolved = self.root.join(relative);
+
+        // Canonicalize both to resolve symlinks and `..` components.
+        // If the file doesn't exist yet, canonicalize the parent + join the filename.
+        let inside_vault = if resolved.exists() {
+            resolved.canonicalize().ok().map(|p| p.starts_with(&self.root))
+        } else if let Some(parent) = resolved.parent() {
+            parent.canonicalize().ok().map(|p| p.starts_with(&self.root))
+        } else {
+            Some(false)
+        };
+
+        match inside_vault {
+            Some(true) | None => Ok(resolved),
+            Some(false) => Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "path escapes vault root",
+            )),
+        }
     }
 
     /// Resolve a relative path against the vault root.
-    pub fn resolve_path(&self, relative: &str) -> PathBuf {
+    ///
+    /// Returns an error if the path would escape the vault.
+    pub fn resolve_path(&self, relative: &str) -> io::Result<PathBuf> {
         self.vault_path(relative)
     }
 
@@ -225,7 +255,7 @@ impl VaultManager {
 
     /// Check whether `relative` resolves to an existing filesystem entry.
     pub fn path_exists(&self, relative: &str) -> bool {
-        self.vault_path(relative).exists()
+        self.vault_path(relative).is_ok_and(|p| p.exists())
     }
 
     /// Check whether `relative` has a `.md` extension (case-insensitive).
@@ -250,7 +280,7 @@ impl VaultManager {
 
     /// Read the content of a note at `path`.
     pub fn read_note(&self, path: &str) -> io::Result<String> {
-        fs::read_to_string(self.vault_path(path))
+        fs::read_to_string(self.vault_path(path)?)
     }
 
     /// Create a new note at `path` with `content`.
@@ -258,7 +288,7 @@ impl VaultManager {
     /// Parent directories are created automatically. Uses atomic write so
     /// the file is either fully written or not at all.
     pub fn create_note(&self, path: &str, content: &str) -> io::Result<()> {
-        let full = self.vault_path(path);
+        let full = self.vault_path(path)?;
         if let Some(parent) = full.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -267,14 +297,14 @@ impl VaultManager {
 
     /// Overwrite an existing note at `path` with `content`. Uses atomic write.
     pub fn update_note(&self, path: &str, content: &str) -> io::Result<()> {
-        atomic_write_str(&self.vault_path(path), content)
+        atomic_write_str(&self.vault_path(path)?, content)
     }
 
     /// Delete a note by moving it to `.trash/{timestamp}/{original_path}`.
     ///
     /// The timestamp is milliseconds since the Unix epoch.
     pub fn delete_note(&self, path: &str) -> io::Result<()> {
-        let full = self.vault_path(path);
+        let full = self.vault_path(path)?;
         if !full.exists() {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
@@ -304,8 +334,8 @@ impl VaultManager {
     ///
     /// Intermediate directories in the destination are created automatically.
     pub fn rename_note(&self, old: &str, new: &str) -> io::Result<()> {
-        let full_old = self.vault_path(old);
-        let full_new = self.vault_path(new);
+        let full_old = self.vault_path(old)?;
+        let full_new = self.vault_path(new)?;
 
         if !full_old.exists() {
             return Err(io::Error::new(
@@ -323,7 +353,7 @@ impl VaultManager {
 
     /// Create a folder (and any intermediate directories) at `path`.
     pub fn create_folder(&self, path: &str) -> io::Result<()> {
-        fs::create_dir_all(self.vault_path(path))
+        fs::create_dir_all(self.vault_path(path)?)
     }
 }
 
@@ -587,6 +617,30 @@ mod tests {
         assert!(!vm.path_exists("old.md"));
         assert!(vm.path_exists("new.md"));
         assert_eq!(vm.read_note("new.md").unwrap(), "content");
+    }
+
+    // ---- security: path traversal -------------------------------------------
+
+    #[test]
+    fn test_path_traversal_blocked() {
+        let dir = setup_vault();
+        let vm = VaultManager::new(dir.path());
+
+        // Attempt to read outside the vault via ..
+        let result = vm.read_note("../../../etc/passwd");
+        assert!(result.is_err(), "path traversal should be blocked");
+
+        let result = vm.read_note("sub/../../etc/hosts");
+        assert!(result.is_err(), "nested path traversal should be blocked");
+    }
+
+    #[test]
+    fn test_null_byte_in_path_blocked() {
+        let dir = setup_vault();
+        let vm = VaultManager::new(dir.path());
+
+        let result = vm.read_note("note.md\0../../../etc/passwd");
+        assert!(result.is_err(), "null byte in path should be blocked");
     }
 
     // ---- helpers -----------------------------------------------------------
