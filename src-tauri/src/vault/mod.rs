@@ -38,3 +38,5 @@ impl VaultManager {
         notes
     }
 }
+
+pub mod lock;
