@@ -161,8 +161,15 @@ impl VaultManager {
     ///
     /// **Caller must acquire a [`lock::VaultLock`] before calling this.**
     pub fn open_vault(path: impl Into<PathBuf>) -> Result<Self, VaultError> {
+        let raw = path.into();
+        // Canonicalize root at construction time so all subsequent vault_path()
+        // comparisons are against the real filesystem path, preventing TOCTOU
+        // when the root itself contains symlink components.
+        let canonical_root = raw
+            .canonicalize()
+            .map_err(|e| VaultError::InvalidRoot(e.to_string()))?;
         let vm = Self {
-            root: path.into(),
+            root: canonical_root,
         };
         vm.validate_vault()?;
         Ok(vm)
@@ -227,8 +234,10 @@ impl VaultManager {
         };
 
         match inside_vault {
-            Some(true) | None => Ok(resolved),
-            Some(false) => Err(io::Error::new(
+            Some(true) => Ok(resolved),
+            // Treat canonicalize failure (None) as denial — a broken symlink or
+            // permission error should never silently allow path access.
+            Some(false) | None => Err(io::Error::new(
                 io::ErrorKind::PermissionDenied,
                 "path escapes vault root",
             )),
@@ -315,7 +324,10 @@ impl VaultManager {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_millis())
-            .unwrap_or(0);
+            .map_err(|_| io::Error::new(
+                io::ErrorKind::Other,
+                "system clock before unix epoch",
+            ))?;
 
         let trash_path = self
             .root
