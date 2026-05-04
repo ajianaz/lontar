@@ -3,6 +3,10 @@
 //! Creates a `.vault-lock` JSON file in the vault root. If the lock exists
 //! and the owning process is dead, the lock is stolen. Otherwise acquisition
 //! fails with [`LockError::AlreadyLocked`].
+//!
+//! Lock acquisition uses `OpenOptions::create_new(true)` for an atomic
+//! check-and-create, eliminating TOCTOU races between stale-lock removal
+//! and new-lock creation.
 
 use serde::{Deserialize, Serialize};
 use std::io;
@@ -68,6 +72,9 @@ impl VaultLock {
     /// Try to acquire the vault lock.
     ///
     /// If a stale lock (dead PID) is found, it is stolen automatically.
+    /// Uses `OpenOptions::create_new(true)` to atomically create the lock file,
+    /// preventing TOCTOU races where two processes could both overwrite each
+    /// other's lock.
     ///
     /// # Errors
     ///
@@ -75,24 +82,6 @@ impl VaultLock {
     /// or [`LockError::Io`] on filesystem errors.
     pub fn acquire(vault_path: &Path) -> Result<Self, LockError> {
         let lock_path = Self::lock_path(vault_path);
-
-        if lock_path.exists() {
-            let existing = std::fs::read_to_string(&lock_path)?;
-
-            if let Ok(info) = serde_json::from_str::<LockInfo>(&existing) {
-                if pid_is_alive(info.pid) {
-                    return Err(LockError::AlreadyLocked {
-                        pid: info.pid,
-                        host: info.host,
-                    });
-                }
-                // Stale lock — remove and take over.
-                std::fs::remove_file(&lock_path)?;
-            } else {
-                // Corrupt lock file — remove it.
-                std::fs::remove_file(&lock_path)?;
-            }
-        }
 
         let info = LockInfo {
             pid: std::process::id(),
@@ -104,11 +93,54 @@ impl VaultLock {
         };
 
         let json = serde_json::to_string_pretty(&info)?;
-        std::fs::write(&lock_path, json)?;
 
-        Ok(Self {
-            path: lock_path,
-            held: true,
+        for attempt in 0..3u32 {
+            if lock_path.exists() {
+                let existing = std::fs::read_to_string(&lock_path)?;
+
+                if let Ok(info) = serde_json::from_str::<LockInfo>(&existing) {
+                    if pid_is_alive(info.pid) {
+                        return Err(LockError::AlreadyLocked {
+                            pid: info.pid,
+                            host: info.host,
+                        });
+                    }
+                    // Stale lock — remove and retry.
+                    std::fs::remove_file(&lock_path)?;
+                } else {
+                    // Corrupt lock file — remove it.
+                    std::fs::remove_file(&lock_path)?;
+                }
+            }
+
+            // Atomic create — fails if another process raced us.
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&lock_path)
+            {
+                Ok(mut file) => {
+                    use std::io::Write;
+                    file.write_all(json.as_bytes())?;
+                    file.sync_all()?;
+                    return Ok(Self {
+                        path: lock_path,
+                        held: true,
+                    });
+                }
+                Err(e)
+                    if e.kind() == io::ErrorKind::AlreadyExists && attempt < 2 =>
+                {
+                    // Raced — retry the whole check-and-create sequence.
+                    continue;
+                }
+                Err(e) => return Err(LockError::Io(e)),
+            }
+        }
+
+        Err(LockError::AlreadyLocked {
+            pid: 0,
+            host: "unknown".into(),
         })
     }
 

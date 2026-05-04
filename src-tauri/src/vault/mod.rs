@@ -244,6 +244,33 @@ impl VaultManager {
         }
     }
 
+    /// Validate a relative path for create operations without requiring
+    /// the target or its parent to exist on disk.
+    ///
+    /// Rejects null bytes and any `..` component. Returns the joined path
+    /// without canonicalizing — component-level validation is sufficient
+    /// since no `..` means the path cannot escape the root.
+    fn vault_path_create(&self, relative: &str) -> io::Result<PathBuf> {
+        if relative.contains('\0') {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "path contains null byte",
+            ));
+        }
+
+        use std::path::Component;
+        for comp in Path::new(relative).components() {
+            if matches!(comp, Component::ParentDir) {
+                return Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "path escapes vault root",
+                ));
+            }
+        }
+
+        Ok(self.root.join(relative))
+    }
+
     /// Resolve a relative path against the vault root.
     ///
     /// Returns an error if the path would escape the vault.
@@ -297,16 +324,35 @@ impl VaultManager {
     /// Parent directories are created automatically. Uses atomic write so
     /// the file is either fully written or not at all.
     pub fn create_note(&self, path: &str, content: &str) -> io::Result<()> {
-        let full = self.vault_path(path)?;
+        let full = self.vault_path_create(path)?;
+        let parent_existed = full.parent().map_or(true, |p| p.exists());
         if let Some(parent) = full.parent() {
             fs::create_dir_all(parent)?;
         }
-        atomic_write_str(&full, content)
+        match atomic_write_str(&full, content) {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                // Clean up empty parent dirs if we created them
+                if !parent_existed {
+                    if let Some(parent) = full.parent() {
+                        let _ = std::fs::remove_dir(parent);
+                    }
+                }
+                Err(e)
+            }
+        }
     }
 
     /// Overwrite an existing note at `path` with `content`. Uses atomic write.
     pub fn update_note(&self, path: &str, content: &str) -> io::Result<()> {
-        atomic_write_str(&self.vault_path(path)?, content)
+        let full = self.vault_path(path)?;
+        if !full.exists() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("note not found: {path}"),
+            ));
+        }
+        atomic_write_str(&full, content)
     }
 
     /// Delete a note by moving it to `.trash/{timestamp}/{original_path}`.
@@ -356,6 +402,13 @@ impl VaultManager {
             ));
         }
 
+        if full_new.exists() {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!("destination already exists: {new}"),
+            ));
+        }
+
         if let Some(parent) = full_new.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -365,7 +418,7 @@ impl VaultManager {
 
     /// Create a folder (and any intermediate directories) at `path`.
     pub fn create_folder(&self, path: &str) -> io::Result<()> {
-        fs::create_dir_all(self.vault_path(path)?)
+        fs::create_dir_all(self.vault_path_create(path)?)
     }
 }
 

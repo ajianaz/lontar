@@ -10,6 +10,17 @@ use std::path::{Path, PathBuf};
 
 use rayon::prelude::*;
 use regex::Regex;
+use std::sync::LazyLock;
+
+static RE_WIKILINK: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\[\[([^\]]+?)\]\]").unwrap()
+});
+static RE_INLINE_TAG: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?<!\w)#[A-Za-z][\w/-]*").unwrap()
+});
+static RE_HEADING: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^(#{1,6})\s+(.+)$").unwrap()
+});
 use serde::Serialize;
 use walkdir::WalkDir;
 
@@ -576,7 +587,7 @@ fn parse_inline_array(s: &str) -> Vec<String> {
 /// Supports: `[[Note]]`, `[[Note#Heading]]`, `[[Note^block]]`,
 /// `[[Note|Display]]`, and combinations `[[Note#H^b|D]]`.
 fn parse_wikilinks(body: &str) -> Vec<Wikilink> {
-    let re = Regex::new(r"\[\[([^\]]+?)\]\]").unwrap();
+    let re = &*RE_WIKILINK;
 
     re.captures_iter(body)
         .filter_map(|cap| {
@@ -631,7 +642,7 @@ fn parse_wikilinks(body: &str) -> Vec<Wikilink> {
 /// Extract inline `#tag` from body, skipping fenced code blocks.
 fn parse_inline_tags(body: &str) -> Vec<String> {
     let without_code = strip_code_blocks(body);
-    let re = Regex::new(r"(?<!\w)#[A-Za-z][\w/-]*").unwrap();
+    let re = &*RE_INLINE_TAG;
     re.captures_iter(&without_code)
         .map(|cap| cap[0][1..].to_string())
         .collect()
@@ -639,7 +650,7 @@ fn parse_inline_tags(body: &str) -> Vec<String> {
 
 /// Remove fenced code blocks (` ``` … ``` `) from text.
 fn strip_code_blocks(text: &str) -> String {
-    let mut result = String::with_capacity(text.len());
+    let mut result_lines: Vec<&str> = Vec::new();
     let mut in_block = false;
     for line in text.lines() {
         if line.trim_start().starts_with("```") {
@@ -647,16 +658,15 @@ fn strip_code_blocks(text: &str) -> String {
             continue;
         }
         if !in_block {
-            result.push_str(line);
-            result.push('\n');
+            result_lines.push(line);
         }
     }
-    result
+    result_lines.join("\n")
 }
 
 /// Extract markdown headings from body text.
 fn parse_headings(body: &str) -> Vec<Heading> {
-    let re = Regex::new(r"^(#{1,6})\s+(.+)$").unwrap();
+    let re = &*RE_HEADING;
     re.captures_iter(body)
         .map(|cap| {
             let level = cap[1].len() as u8;
@@ -727,6 +737,29 @@ fn resolve_target(target: &str, notes: &HashMap<String, NoteData>) -> Option<Str
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_default();
         if stem == target {
+            return Some(path.clone());
+        }
+    }
+
+    // 5. Case-insensitive fallback (for case-insensitive filesystems)
+    let target_lower = target.to_lowercase();
+    for (path, note) in notes {
+        let path_lower = path.to_lowercase();
+        if path_lower == target_lower || path_lower == format!("{target_lower}.md") {
+            return Some(path.clone());
+        }
+    }
+    for (path, note) in notes {
+        if note.title.to_lowercase() == target_lower {
+            return Some(path.clone());
+        }
+    }
+    for (path, _note) in notes {
+        let stem = Path::new(path)
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        if stem.to_lowercase() == target_lower {
             return Some(path.clone());
         }
     }

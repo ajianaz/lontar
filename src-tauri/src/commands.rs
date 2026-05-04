@@ -140,7 +140,8 @@ impl Default for AppState {
 /// Sanitize a user-supplied path string.
 ///
 /// Rejects: empty strings, strings containing null bytes, relative paths,
-/// and paths under `/tmp`, `/proc`, `/dev`, `/sys`.
+/// path traversal components (`..`), and paths under `/tmp`, `/proc`,
+/// `/dev`, `/sys`, `/etc`, `/home`, `/var`, `/root`.
 fn sanitize_path(input: &str) -> Result<PathBuf, CommandError> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
@@ -149,17 +150,17 @@ fn sanitize_path(input: &str) -> Result<PathBuf, CommandError> {
     if trimmed.contains('\0') {
         return Err(CommandError::Vault("path contains null byte".into()));
     }
-    // Reject path traversal components before converting to PathBuf.
-    if trimmed.contains("..") {
-        return Err(CommandError::Vault("path must not contain ..".into()));
-    }
     let path = PathBuf::from(trimmed);
     if path.is_relative() {
         return Err(CommandError::Vault(
             "path must be absolute".into(),
         ));
     }
-    for prefix in &["/tmp", "/proc", "/dev", "/sys"] {
+    // Reject path traversal via path components (not substring).
+    if path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+        return Err(CommandError::Vault("path must not contain path traversal (..)".into()));
+    }
+    for prefix in &["/tmp", "/proc", "/dev", "/sys", "/etc", "/home", "/var", "/root"] {
         if trimmed.starts_with(prefix) {
             return Err(CommandError::Vault(format!(
                 "path under {prefix} is not allowed"
@@ -764,7 +765,6 @@ pub async fn start_watcher(state: State<'_, Mutex<AppState>>) -> Result<(), Comm
         token.cancel();
     }
 
-    s.vault.as_ref().ok_or(CommandError::VaultNotOpen)?;
     let vault_root = s.vault.as_ref().map(|v| v.root().to_path_buf()).ok_or(CommandError::VaultNotOpen)?;
 
     let watcher = s.watcher.as_mut().ok_or(CommandError::VaultNotOpen)?;
