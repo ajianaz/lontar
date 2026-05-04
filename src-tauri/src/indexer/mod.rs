@@ -787,9 +787,9 @@ mod tests {
 
     #[test]
     fn test_parse_frontmatter() {
-        let content = "---\ntitle: My Note\ntags: [rust, programming]\n"
-            + "aliases: [My Note, MN]\ncreated: 2024-01-01\n"
-            + "---\n# Hello\nContent here";
+        let content = String::from("---\ntitle: My Note\ntags: [rust, programming]\n")
+            + "aliases: [My Note, MN]\\ncreated: 2024-01-01\\n"
+            + "---\\n# Hello\\nContent here";
         let (fm, body) = split_and_parse_frontmatter(content);
         assert_eq!(fm.title, Some("My Note".to_string()));
         assert_eq!(fm.tags, vec!["rust", "programming"]);
