@@ -128,9 +128,7 @@ impl VaultLock {
                         held: true,
                     });
                 }
-                Err(e)
-                    if e.kind() == io::ErrorKind::AlreadyExists && attempt < 2 =>
-                {
+                Err(e) if e.kind() == io::ErrorKind::AlreadyExists && attempt < 2 => {
                     // Raced — retry the whole check-and-create sequence.
                     continue;
                 }
@@ -215,10 +213,8 @@ mod tests {
         let lock_path = dir.path().join(".vault-lock");
         assert!(lock_path.exists());
 
-        let info: LockInfo = serde_json::from_str(
-            &std::fs::read_to_string(&lock_path).unwrap(),
-        )
-        .unwrap();
+        let info: LockInfo =
+            serde_json::from_str(&std::fs::read_to_string(&lock_path).unwrap()).unwrap();
         assert_eq!(info.pid, std::process::id());
     }
 

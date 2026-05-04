@@ -1,5 +1,4 @@
 /// Full-text search over the vault index powered by Tantivy.
-
 use std::collections::HashSet;
 use std::fmt;
 use std::io;
@@ -9,7 +8,7 @@ use serde::Serialize;
 use tantivy::collector::TopDocs;
 use tantivy::directory::MmapDirectory;
 use tantivy::query::{QueryParser, TermPrefixQuery};
-use tantivy::schema::{Document, Field, Schema, FAST, STORED, STRING, TEXT};
+use tantivy::schema::{Document, FAST, Field, STORED, STRING, Schema, TEXT};
 use tantivy::{DateTime, Index, IndexReader, IndexWriter, SnippetGenerator, Term};
 
 // ---------------------------------------------------------------------------
@@ -111,15 +110,7 @@ pub struct SearchEngine {
 
 impl SearchEngine {
     /// Build the tantivy [`Schema`] and return it alongside each named field.
-    fn build_schema() -> (
-        Schema,
-        Field,
-        Field,
-        Field,
-        Field,
-        Field,
-        Field,
-    ) {
+    fn build_schema() -> (Schema, Field, Field, Field, Field, Field, Field) {
         let mut builder = Schema::builder();
 
         let title = builder.add_text_field("title", TEXT | STORED);
@@ -262,8 +253,7 @@ impl SearchEngine {
         let top_docs = searcher.search(&*query, &TopDocs::with_limit(fetch))?;
 
         // Snippet generator for highlighting.
-        let mut snippet_gen =
-            SnippetGenerator::create(&searcher, query.as_ref(), self.body_field)?;
+        let mut snippet_gen = SnippetGenerator::create(&searcher, query.as_ref(), self.body_field)?;
         snippet_gen.set_max_num_chars(150);
 
         let mut results = Vec::with_capacity(limit);
@@ -625,12 +615,16 @@ mod tests {
         assert_eq!(all.len(), 2);
 
         // Filter to "urgent" tag.
-        let filtered = engine.search_with_filter("quarterly report", 10, Some("urgent")).unwrap();
+        let filtered = engine
+            .search_with_filter("quarterly report", 10, Some("urgent"))
+            .unwrap();
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].path, "work/task-a.md");
 
         // Filter to non-existent tag.
-        let none = engine.search_with_filter("quarterly report", 10, Some("fictional")).unwrap();
+        let none = engine
+            .search_with_filter("quarterly report", 10, Some("fictional"))
+            .unwrap();
         assert!(none.is_empty());
     }
 

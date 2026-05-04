@@ -100,9 +100,7 @@ impl TreeEntry {
 
             if path.is_dir() {
                 dirs.push(path);
-            } else if path.is_file()
-                && path.extension().is_some_and(|ext| ext == "md")
-            {
+            } else if path.is_file() && path.extension().is_some_and(|ext| ext == "md") {
                 files.push(TreeEntry::File {
                     name: file_name_str.into_owned(),
                 });
@@ -152,9 +150,7 @@ impl VaultManager {
     /// Does **not** validate the root. Use [`validate_vault`](Self::validate_vault)
     /// or [`open_vault`](Self::open_vault) for validated construction.
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self {
-            root: root.into(),
-        }
+        Self { root: root.into() }
     }
 
     /// Open a vault, validating that the root exists and is read/writable.
@@ -226,9 +222,15 @@ impl VaultManager {
         // Canonicalize both to resolve symlinks and `..` components.
         // If the file doesn't exist yet, canonicalize the parent + join the filename.
         let inside_vault = if resolved.exists() {
-            resolved.canonicalize().ok().map(|p| p.starts_with(&self.root))
+            resolved
+                .canonicalize()
+                .ok()
+                .map(|p| p.starts_with(&self.root))
         } else if let Some(parent) = resolved.parent() {
-            parent.canonicalize().ok().map(|p| p.starts_with(&self.root))
+            parent
+                .canonicalize()
+                .ok()
+                .map(|p| p.starts_with(&self.root))
         } else {
             Some(false)
         };
@@ -370,10 +372,7 @@ impl VaultManager {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_millis())
-            .map_err(|_| io::Error::new(
-                io::ErrorKind::Other,
-                "system clock before unix epoch",
-            ))?;
+            .map_err(|_| io::Error::new(io::ErrorKind::Other, "system clock before unix epoch"))?;
 
         let trash_path = self
             .root
@@ -485,18 +484,27 @@ mod tests {
 
         // Sub's children: [File("deep.md")]
         assert_eq!(children.len(), 1);
-        assert_eq!(children[0], TreeEntry::File { name: "deep.md".into() });
+        assert_eq!(
+            children[0],
+            TreeEntry::File {
+                name: "deep.md".into()
+            }
+        );
 
         // Second child of root: File("Z.md")
         assert_eq!(
             children[1],
-            TreeEntry::File { name: "inner.md".into() }
+            TreeEntry::File {
+                name: "inner.md".into()
+            }
         );
 
         // Root second child: File("Z.md")
         assert_eq!(
             tree_children(&tree)[1],
-            TreeEntry::File { name: "Z.md".into() }
+            TreeEntry::File {
+                name: "Z.md".into()
+            }
         );
     }
 

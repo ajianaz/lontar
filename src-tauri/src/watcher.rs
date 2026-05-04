@@ -16,9 +16,14 @@ pub enum WatchEvent {
     Created(PathBuf),
     Modified(PathBuf),
     Removed(PathBuf),
-    Rename { old: PathBuf, new: PathBuf },
+    Rename {
+        old: PathBuf,
+        new: PathBuf,
+    },
     /// Signals a large batch — frontend should re-index everything.
-    BulkChange { count: usize },
+    BulkChange {
+        count: usize,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -318,24 +323,23 @@ fn insert_coalesced(map: &mut HashMap<PathBuf, RawEvent>, event: RawEvent) {
         RawEvent::Created(p) | RawEvent::Modified(p) | RawEvent::Removed(p) => p.clone(),
     };
 
-    map.entry(path).and_modify(|existing| {
-        use RawEvent::*;
-        match (existing, &event) {
-            (Created(_), Modified(_)) => {}      // Created wins
-            (Modified(_), Modified(_)) => {}     // dedup
-            (_, _) => *existing = event.clone(), // new type replaces
-        }
-    }).or_insert(event);
+    map.entry(path)
+        .and_modify(|existing| {
+            use RawEvent::*;
+            match (existing, &event) {
+                (Created(_), Modified(_)) => {}      // Created wins
+                (Modified(_), Modified(_)) => {}     // dedup
+                (_, _) => *existing = event.clone(), // new type replaces
+            }
+        })
+        .or_insert(event);
 }
 
 /// Flush collected events to the output channel.
 ///
 /// If more than 10 unique paths were modified in this debounce window,
 /// emit a single [`WatchEvent::BulkChange`] instead of individual events.
-fn flush_pending(
-    pending: &HashMap<PathBuf, RawEvent>,
-    tx: &mpsc::UnboundedSender<WatchEvent>,
-) {
+fn flush_pending(pending: &HashMap<PathBuf, RawEvent>, tx: &mpsc::UnboundedSender<WatchEvent>) {
     if pending.is_empty() {
         return;
     }
@@ -377,9 +381,7 @@ mod tests {
     /// Returns both the watcher (keeps it alive) and the receiver.
     ///
     /// **Must** be called from a tokio runtime (e.g. `#[tokio::test]`).
-    fn start_watcher(
-        root: &Path,
-    ) -> (VaultWatcher, mpsc::UnboundedReceiver<WatchEvent>) {
+    fn start_watcher(root: &Path) -> (VaultWatcher, mpsc::UnboundedReceiver<WatchEvent>) {
         let mut w = VaultWatcher::new(root, Some(50)); // 50ms debounce for tests
         let rx = w.subscribe().expect("subscribe failed");
         w.start().expect("watcher start failed");
@@ -387,10 +389,7 @@ mod tests {
     }
 
     /// Drain all pending events after waiting `wait_ms`.
-    fn drain_events(
-        rx: &mut mpsc::UnboundedReceiver<WatchEvent>,
-        wait_ms: u64,
-    ) -> Vec<WatchEvent> {
+    fn drain_events(rx: &mut mpsc::UnboundedReceiver<WatchEvent>, wait_ms: u64) -> Vec<WatchEvent> {
         thread::sleep(Duration::from_millis(wait_ms));
         let mut events = Vec::new();
         while let Ok(e) = rx.try_recv() {

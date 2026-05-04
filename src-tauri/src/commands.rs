@@ -9,7 +9,7 @@ use std::sync::Arc;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use thiserror::Error;
-use tokio::sync::{watch, Mutex};
+use tokio::sync::{Mutex, watch};
 use tokio_util::sync::CancellationToken;
 
 use crate::indexer::{Backlink, GraphEdge, Indexer, NoteData, Wikilink};
@@ -75,9 +75,7 @@ pub enum TreeEntryJson {
 impl TreeEntryJson {
     fn from_entry(e: &TreeEntry) -> Self {
         match e {
-            TreeEntry::File { name } => TreeEntryJson::File {
-                name: name.clone(),
-            },
+            TreeEntry::File { name } => TreeEntryJson::File { name: name.clone() },
             TreeEntry::Dir { name, children } => TreeEntryJson::Dir {
                 name: name.clone(),
                 children: children.iter().map(Self::from_entry).collect(),
@@ -150,15 +148,20 @@ fn sanitize_path(input: &str) -> Result<PathBuf, CommandError> {
     }
     let path = PathBuf::from(trimmed);
     if path.is_relative() {
-        return Err(CommandError::Vault(
-            "path must be absolute".into(),
-        ));
+        return Err(CommandError::Vault("path must be absolute".into()));
     }
     // Reject path traversal via path components (not substring).
-    if path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
-        return Err(CommandError::Vault("path must not contain path traversal (..)".into()));
+    if path
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return Err(CommandError::Vault(
+            "path must not contain path traversal (..)".into(),
+        ));
     }
-    for prefix in &["/tmp", "/proc", "/dev", "/sys", "/etc", "/home", "/var", "/root"] {
+    for prefix in &[
+        "/tmp", "/proc", "/dev", "/sys", "/etc", "/home", "/var", "/root",
+    ] {
         if trimmed.starts_with(prefix) {
             return Err(CommandError::Vault(format!(
                 "path under {prefix} is not allowed"
@@ -194,12 +197,12 @@ fn reindex_search_from_note(s: &mut AppState, path: &str) -> Result<(), CommandE
         .ok_or_else(|| CommandError::Indexer(format!("note not in index: {path}")))?
         .clone();
 
-    let mod_dt = tantivy::DateTime::from_timestamp_micros(
-        parse_iso_to_micros(note.modified.as_deref().unwrap_or("")),
-    );
-    let cre_dt = tantivy::DateTime::from_timestamp_micros(
-        parse_iso_to_micros(note.created.as_deref().unwrap_or("")),
-    );
+    let mod_dt = tantivy::DateTime::from_timestamp_micros(parse_iso_to_micros(
+        note.modified.as_deref().unwrap_or(""),
+    ));
+    let cre_dt = tantivy::DateTime::from_timestamp_micros(parse_iso_to_micros(
+        note.created.as_deref().unwrap_or(""),
+    ));
 
     let search = s.search.as_mut().ok_or(CommandError::SearchNotReady)?;
     search
@@ -226,15 +229,30 @@ fn parse_iso_to_micros(s: &str) -> i64 {
     }
 
     // Parse date portion YYYY-MM-DD.
-    let year: i32 = match bytes[0..4].iter().map(|b| *b as char).collect::<String>().parse() {
+    let year: i32 = match bytes[0..4]
+        .iter()
+        .map(|b| *b as char)
+        .collect::<String>()
+        .parse()
+    {
         Ok(v) => v,
         Err(_) => return 0,
     };
-    let month: u32 = match bytes[5..7].iter().map(|b| *b as char).collect::<String>().parse() {
+    let month: u32 = match bytes[5..7]
+        .iter()
+        .map(|b| *b as char)
+        .collect::<String>()
+        .parse()
+    {
         Ok(v) => v,
         Err(_) => return 0,
     };
-    let day: u32 = match bytes[8..10].iter().map(|b| *b as char).collect::<String>().parse() {
+    let day: u32 = match bytes[8..10]
+        .iter()
+        .map(|b| *b as char)
+        .collect::<String>()
+        .parse()
+    {
         Ok(v) => v,
         Err(_) => return 0,
     };
@@ -302,8 +320,8 @@ pub async fn open_vault(
 ) -> Result<String, CommandError> {
     let vault_path = sanitize_path(&path)?;
 
-    let vault = VaultManager::open_vault(&vault_path)
-        .map_err(|e| CommandError::Vault(e.to_string()))?;
+    let vault =
+        VaultManager::open_vault(&vault_path).map_err(|e| CommandError::Vault(e.to_string()))?;
 
     let root = vault.root().to_string_lossy().into_owned();
 
@@ -314,8 +332,8 @@ pub async fn open_vault(
         .rebuild(&vault)
         .map_err(|e| CommandError::Indexer(e.to_string()))?;
 
-    let mut search = SearchEngine::new(&search_index_path)
-        .map_err(|e| CommandError::Search(e.to_string()))?;
+    let mut search =
+        SearchEngine::new(&search_index_path).map_err(|e| CommandError::Search(e.to_string()))?;
 
     // Index all notes into tantivy.
     let idx = indexer.index();
@@ -324,12 +342,12 @@ pub async fn open_vault(
             .read_note(rel_path)
             .map_err(|e| CommandError::Io(e.to_string()))?;
 
-        let mod_dt = tantivy::DateTime::from_timestamp_micros(
-            parse_iso_to_micros(note.modified.as_deref().unwrap_or("")),
-        );
-        let cre_dt = tantivy::DateTime::from_timestamp_micros(
-            parse_iso_to_micros(note.created.as_deref().unwrap_or("")),
-        );
+        let mod_dt = tantivy::DateTime::from_timestamp_micros(parse_iso_to_micros(
+            note.modified.as_deref().unwrap_or(""),
+        ));
+        let cre_dt = tantivy::DateTime::from_timestamp_micros(parse_iso_to_micros(
+            note.created.as_deref().unwrap_or(""),
+        ));
 
         search
             .index_note(rel_path, &note.title, &body, &note.tags, mod_dt, cre_dt)
@@ -549,8 +567,8 @@ pub async fn rebuild_index(state: State<'_, Mutex<AppState>>) -> Result<(), Comm
 
     // Rebuild search from scratch.
     let search_index_path = vault.root().join(".vault-index").join("search");
-    let mut search = SearchEngine::new(&search_index_path)
-        .map_err(|e| CommandError::Search(e.to_string()))?;
+    let mut search =
+        SearchEngine::new(&search_index_path).map_err(|e| CommandError::Search(e.to_string()))?;
 
     let idx = indexer.index();
     for (rel_path, note) in &idx.notes {
@@ -558,12 +576,12 @@ pub async fn rebuild_index(state: State<'_, Mutex<AppState>>) -> Result<(), Comm
             .read_note(rel_path)
             .map_err(|e| CommandError::Io(e.to_string()))?;
 
-        let mod_dt = tantivy::DateTime::from_timestamp_micros(
-            parse_iso_to_micros(note.modified.as_deref().unwrap_or("")),
-        );
-        let cre_dt = tantivy::DateTime::from_timestamp_micros(
-            parse_iso_to_micros(note.created.as_deref().unwrap_or("")),
-        );
+        let mod_dt = tantivy::DateTime::from_timestamp_micros(parse_iso_to_micros(
+            note.modified.as_deref().unwrap_or(""),
+        ));
+        let cre_dt = tantivy::DateTime::from_timestamp_micros(parse_iso_to_micros(
+            note.created.as_deref().unwrap_or(""),
+        ));
 
         search
             .index_note(rel_path, &note.title, &body, &note.tags, mod_dt, cre_dt)

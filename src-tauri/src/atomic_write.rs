@@ -17,11 +17,12 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> io::Result<()> {
         io::Error::new(io::ErrorKind::InvalidInput, "path has no parent directory")
     })?;
 
-    let file_name = path
-        .file_name()
-        .ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidInput, "path has no file name component")
-        })?;
+    let file_name = path.file_name().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "path has no file name component",
+        )
+    })?;
 
     let tmp_path = parent.join(format!(".{}.tmp", file_name.to_string_lossy()));
 

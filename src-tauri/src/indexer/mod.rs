@@ -12,15 +12,10 @@ use rayon::prelude::*;
 use regex::Regex;
 use std::sync::LazyLock;
 
-static RE_WIKILINK: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\[\[([^\]]+?)\]\]").unwrap()
-});
-static RE_INLINE_TAG: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?<!\w)#[A-Za-z][\w/-]*").unwrap()
-});
-static RE_HEADING: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^(#{1,6})\s+(.+)$").unwrap()
-});
+static RE_WIKILINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[([^\]]+?)\]\]").unwrap());
+static RE_INLINE_TAG: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?<!\w)#[A-Za-z][\w/-]*").unwrap());
+static RE_HEADING: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(#{1,6})\s+(.+)$").unwrap());
 use serde::Serialize;
 use walkdir::WalkDir;
 
@@ -156,8 +151,7 @@ impl Indexer {
                 if !e.path().extension().is_some_and(|ext| ext == "md") {
                     return false;
                 }
-                !e
-                    .path()
+                !e.path()
                     .components()
                     .any(|c| c.as_os_str().to_string_lossy().starts_with('.'))
             })
@@ -205,14 +199,11 @@ impl Indexer {
                     });
 
                     let context = extract_link_context(body, link);
-                    backlinks
-                        .entry(target_path)
-                        .or_default()
-                        .push(Backlink {
-                            source_path: source_path.clone(),
-                            source_title: note.title.clone(),
-                            context,
-                        });
+                    backlinks.entry(target_path).or_default().push(Backlink {
+                        source_path: source_path.clone(),
+                        source_title: note.title.clone(),
+                        context,
+                    });
                 }
             }
         }
@@ -229,9 +220,7 @@ impl Indexer {
 
     /// Index or re-index a single file by relative path.
     pub fn index_file(&mut self, vault: &VaultManager, path: &str) -> Result<(), IndexerError> {
-        let full_path = vault
-            .resolve_path(path)
-            .map_err(IndexerError::Io)?;
+        let full_path = vault.resolve_path(path).map_err(IndexerError::Io)?;
         let content = std::fs::read_to_string(&full_path).map_err(IndexerError::Io)?;
         let (note_data, body) = parse_note(path, &content);
 
@@ -414,7 +403,12 @@ fn parse_note(path: &str, content: &str) -> (NoteData, String) {
     let title = frontmatter
         .title
         .clone()
-        .or_else(|| headings.iter().find(|h| h.level == 1).map(|h| h.text.clone()))
+        .or_else(|| {
+            headings
+                .iter()
+                .find(|h| h.level == 1)
+                .map(|h| h.text.clone())
+        })
         .unwrap_or(filename);
 
     // Dates from frontmatter raw
@@ -561,8 +555,7 @@ fn parse_frontmatter_lines(fm_lines: &[&str]) -> Frontmatter {
 fn clean_yaml_value(s: &str) -> String {
     let s = s.trim();
     if s.len() >= 2
-        && ((s.starts_with('"') && s.ends_with('"'))
-            || (s.starts_with('\'') && s.ends_with('\'')))
+        && ((s.starts_with('"') && s.ends_with('"')) || (s.starts_with('\'') && s.ends_with('\'')))
     {
         return s[1..s.len() - 1].to_string();
     }
@@ -884,8 +877,8 @@ mod tests {
 
     #[test]
     fn test_parse_inline_tags() {
-        let body = "Some #rust and #web-dev content\n```code\n#notatag here\n```\n"
-            + "More #programming";
+        let body =
+            "Some #rust and #web-dev content\n```code\n#notatag here\n```\n" + "More #programming";
         let tags = parse_inline_tags(body);
         assert!(tags.contains(&"rust".to_string()));
         assert!(tags.contains(&"web-dev".to_string()));
@@ -950,8 +943,16 @@ mod tests {
 
         let (nodes, edges) = indexer.get_graph_data();
         assert_eq!(nodes.len(), 2);
-        assert!(edges.iter().any(|e| e.source == "a.md" && e.target == "b.md"));
-        assert!(edges.iter().any(|e| e.source == "b.md" && e.target == "a.md"));
+        assert!(
+            edges
+                .iter()
+                .any(|e| e.source == "a.md" && e.target == "b.md")
+        );
+        assert!(
+            edges
+                .iter()
+                .any(|e| e.source == "b.md" && e.target == "a.md")
+        );
     }
 
     // ---- test_backlinks_reverse_index --------------------------------------
@@ -960,11 +961,7 @@ mod tests {
     fn test_backlinks_reverse_index() {
         let dir = setup_vault();
         fs::write(dir.path().join("a.md"), "Link to [[b]] here\n").unwrap();
-        fs::write(
-            dir.path().join("b.md"),
-            "# B Note\nNo outgoing links\n",
-        )
-        .unwrap();
+        fs::write(dir.path().join("b.md"), "# B Note\nNo outgoing links\n").unwrap();
 
         let vault = VaultManager::new(dir.path());
         let mut indexer = Indexer::new(dir.path().to_path_buf());
@@ -1020,10 +1017,7 @@ mod tests {
             display_text: None,
             block_id: None,
         };
-        assert_eq!(
-            indexer.resolve_link(&link),
-            Some("my-note.md".to_string())
-        );
+        assert_eq!(indexer.resolve_link(&link), Some("my-note.md".to_string()));
 
         // Resolve by title
         let link_by_title = Wikilink {
@@ -1054,10 +1048,12 @@ mod tests {
     #[test]
     fn test_tags_index() {
         let dir = setup_vault();
-        fs::write(dir.path().join("a.md"), "---\ntags: [rust, web]\n---\n# A\n")
-            .unwrap();
-        fs::write(dir.path().join("b.md"), "# B\nSome #rust content\n")
-            .unwrap();
+        fs::write(
+            dir.path().join("a.md"),
+            "---\ntags: [rust, web]\n---\n# A\n",
+        )
+        .unwrap();
+        fs::write(dir.path().join("b.md"), "# B\nSome #rust content\n").unwrap();
         fs::write(dir.path().join("c.md"), "# C\n").unwrap();
 
         let vault = VaultManager::new(dir.path());
@@ -1087,12 +1083,15 @@ mod tests {
         assert!(indexer.get_graph_data().1.is_empty());
 
         // Add link from a → b via incremental update
-        fs::write(dir.path().join("a.md"), "# A\nLinks to [[b]]\n")
-            .unwrap();
+        fs::write(dir.path().join("a.md"), "# A\nLinks to [[b]]\n").unwrap();
         indexer.index_file(&vault, "a.md").unwrap();
 
         let edges = &indexer.get_graph_data().1;
-        assert!(edges.iter().any(|e| e.source == "a.md" && e.target == "b.md"));
+        assert!(
+            edges
+                .iter()
+                .any(|e| e.source == "a.md" && e.target == "b.md")
+        );
         assert_eq!(indexer.get_backlinks("b.md").len(), 1);
     }
 
@@ -1143,7 +1142,11 @@ mod tests {
 
         let (nodes, edges) = indexer.get_graph_data();
         assert_eq!(nodes.len(), 2);
-        assert!(edges.iter().any(|e| e.source == "sub/a.md" && e.target == "sub/deep/b.md"));
+        assert!(
+            edges
+                .iter()
+                .any(|e| e.source == "sub/a.md" && e.target == "sub/deep/b.md")
+        );
     }
 
     // ---- test_hidden_files_skipped -----------------------------------------
