@@ -1,0 +1,11 @@
+export const APP_NAME = 'Lontar';
+export const AUTO_SAVE_DELAY_MS = 1500;
+export const SEARCH_DEBOUNCE_MS = 300;
+export const SIDEBAR_DEFAULT_WIDTH = 260;
+export const SIDE_PANEL_DEFAULT_WIDTH = 300;
+export const SIDEBAR_MIN_WIDTH = 180;
+export const SIDE_PANEL_MIN_WIDTH = 180;
+export const EDITOR_MIN_WIDTH = 300;
+export const MAX_SEARCH_RESULTS = 100;
+export const SUPPORTED_EXTENSIONS = ['.md'];
+export const FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/;
