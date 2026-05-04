@@ -14,8 +14,9 @@ use std::sync::LazyLock;
 
 static RE_WIKILINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[([^\]]+?)\]\]").unwrap());
 static RE_INLINE_TAG: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\b#[A-Za-z][\w/-]*").unwrap());
-static RE_HEADING: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(#{1,6})\s+(.+)$").unwrap());
+    LazyLock::new(|| Regex::new(r"(?<!\w)#[A-Za-z][\w/-]*").unwrap());
+static RE_HEADING: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^(#{1,6})\s+(.+)$").unwrap());
 use serde::Serialize;
 use walkdir::WalkDir;
 
@@ -792,7 +793,10 @@ mod tests {
     use std::fs;
 
     fn setup_vault() -> tempfile::TempDir {
-        tempfile::tempdir().unwrap()
+        tempfile::Builder::new()
+            .prefix("lontar_test_")
+            .tempdir()
+            .unwrap()
     }
 
     // ---- test_parse_frontmatter -------------------------------------------
@@ -800,8 +804,8 @@ mod tests {
     #[test]
     fn test_parse_frontmatter() {
         let content = String::from("---\ntitle: My Note\ntags: [rust, programming]\n")
-            + "aliases: [My Note, MN]\\ncreated: 2024-01-01\\n"
-            + "---\\n# Hello\\nContent here";
+            + "aliases: [My Note, MN]\ncreated: 2024-01-01\n"
+            + "---\n# Hello\nContent here";
         let (fm, body) = split_and_parse_frontmatter(&content);
         assert_eq!(fm.title, Some("My Note".to_string()));
         assert_eq!(fm.tags, vec!["rust", "programming"]);
@@ -1114,7 +1118,7 @@ mod tests {
         let content = "---\ntitle: T\n---\nhello world\nfoo bar baz";
         let (note, _) = parse_note("test.md", content);
         assert_eq!(note.word_count, 5); // "hello world foo bar baz"
-        assert_eq!(note.line_count, 4); // ---, title: T, ---, hello world, foo bar baz
+        assert_eq!(note.line_count, 5); // ---, title: T, ---, hello world, foo bar baz
     }
 
     // ---- test_slugify -----------------------------------------------------

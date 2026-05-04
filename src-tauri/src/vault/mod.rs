@@ -464,31 +464,39 @@ mod tests {
         assert_eq!(children.len(), 2);
 
         // First child: Dir "A"
-        let TreeEntry::Dir { name, children } = &children[0] else {
+        let TreeEntry::Dir {
+            name,
+            children: a_children,
+        } = &children[0]
+        else {
             panic!("expected Dir A");
         };
         assert_eq!(name, "A");
 
         // A's children: [Dir("Sub"), File("inner.md")]
-        assert_eq!(children.len(), 2);
+        assert_eq!(a_children.len(), 2);
 
-        let TreeEntry::Dir { name, children } = &children[0] else {
+        let TreeEntry::Dir {
+            name: sub_name,
+            children: sub_children,
+        } = &a_children[0]
+        else {
             panic!("expected Dir Sub");
         };
-        assert_eq!(name, "Sub");
+        assert_eq!(sub_name, "Sub");
 
         // Sub's children: [File("deep.md")]
-        assert_eq!(children.len(), 1);
+        assert_eq!(sub_children.len(), 1);
         assert_eq!(
-            children[0],
+            sub_children[0],
             TreeEntry::File {
                 name: "deep.md".into()
             }
         );
 
-        // Second child of root: File("Z.md")
+        // Second child of A: File("inner.md")
         assert_eq!(
-            children[1],
+            a_children[1],
             TreeEntry::File {
                 name: "inner.md".into()
             }
@@ -634,6 +642,8 @@ mod tests {
     fn test_relative_path_inside_vault() {
         let dir = setup_vault();
         let vm = VaultManager::new(dir.path());
+
+        fs::create_dir(dir.path().join("notes")).unwrap();
 
         let abs = vm.resolve_path("notes/daily.md").unwrap();
         let rel = vm.relative_path(&abs).unwrap();

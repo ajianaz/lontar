@@ -374,7 +374,10 @@ mod tests {
 
     /// Helper: create a temp directory.
     fn setup_vault() -> tempfile::TempDir {
-        tempfile::tempdir().unwrap()
+        tempfile::Builder::new()
+            .prefix("lontar_test_")
+            .tempdir()
+            .unwrap()
     }
 
     /// Helper: create and start a watcher with short debounce.
