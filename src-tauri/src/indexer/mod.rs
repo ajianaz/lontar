@@ -137,11 +137,10 @@ impl Indexer {
 
     /// Full index rebuild. Walks all `.md` files, parses in parallel with
     /// rayon, then builds graph edges and backlinks in a single pass.
-    pub fn rebuild(&mut self, vault: &VaultManager) -> Result<(), IndexerError> {
-        let root = vault.root();
+    pub fn rebuild(&mut self, vault_root: &Path) -> Result<(), IndexerError> {
 
         // Collect all .md file absolute paths, skip hidden dirs/files
-        let md_files: Vec<PathBuf> = WalkDir::new(root)
+        let md_files: Vec<PathBuf> = WalkDir::new(vault_root)
             .into_iter()
             .filter_map(|e| e.ok())
             .filter(|e| {
@@ -159,10 +158,13 @@ impl Indexer {
             .collect();
 
         // Parse all files in parallel. Keep body for context extraction.
+        let root = vault_root.to_path_buf();
         let parsed: Vec<(String, NoteData, String)> = md_files
             .par_iter()
             .filter_map(|abs_path| {
-                let relative = vault.relative_path(abs_path)?;
+                let relative = abs_path.strip_prefix(&root)
+                    .ok()
+                    .map(|p| p.to_string_lossy().into_owned())?;
                 let content = std::fs::read_to_string(abs_path).ok()?;
                 let (note_data, body) = parse_note(&relative, &content);
                 Some((relative, note_data, body))
@@ -945,7 +947,7 @@ mod tests {
 
         let vault = VaultManager::new(dir.path());
         let mut indexer = Indexer::new(dir.path().to_path_buf());
-        indexer.rebuild(&vault).unwrap();
+        indexer.rebuild(vault.root()).unwrap();
 
         let (nodes, edges) = indexer.get_graph_data();
         assert_eq!(nodes.len(), 2);
@@ -971,7 +973,7 @@ mod tests {
 
         let vault = VaultManager::new(dir.path());
         let mut indexer = Indexer::new(dir.path().to_path_buf());
-        indexer.rebuild(&vault).unwrap();
+        indexer.rebuild(vault.root()).unwrap();
 
         let backlinks = indexer.get_backlinks("b.md");
         assert_eq!(backlinks.len(), 1);
@@ -989,7 +991,7 @@ mod tests {
 
         let vault = VaultManager::new(dir.path());
         let mut indexer = Indexer::new(dir.path().to_path_buf());
-        indexer.rebuild(&vault).unwrap();
+        indexer.rebuild(vault.root()).unwrap();
 
         assert_eq!(indexer.get_backlinks("b.md").len(), 1);
         assert_eq!(indexer.get_graph_data().0.len(), 2);
@@ -1013,7 +1015,7 @@ mod tests {
 
         let vault = VaultManager::new(dir.path());
         let mut indexer = Indexer::new(dir.path().to_path_buf());
-        indexer.rebuild(&vault).unwrap();
+        indexer.rebuild(vault.root()).unwrap();
 
         // Resolve by filename stem
         let link = Wikilink {
@@ -1064,7 +1066,7 @@ mod tests {
 
         let vault = VaultManager::new(dir.path());
         let mut indexer = Indexer::new(dir.path().to_path_buf());
-        indexer.rebuild(&vault).unwrap();
+        indexer.rebuild(vault.root()).unwrap();
 
         let tags = indexer.get_tags();
         assert!(tags.iter().any(|(t, c)| t == "rust" && *c == 2));
@@ -1084,7 +1086,7 @@ mod tests {
 
         let vault = VaultManager::new(dir.path());
         let mut indexer = Indexer::new(dir.path().to_path_buf());
-        indexer.rebuild(&vault).unwrap();
+        indexer.rebuild(vault.root()).unwrap();
         assert_eq!(indexer.get_graph_data().0.len(), 2);
         assert!(indexer.get_graph_data().1.is_empty());
 
@@ -1144,7 +1146,7 @@ mod tests {
 
         let vault = VaultManager::new(dir.path());
         let mut indexer = Indexer::new(dir.path().to_path_buf());
-        indexer.rebuild(&vault).unwrap();
+        indexer.rebuild(vault.root()).unwrap();
 
         let (nodes, edges) = indexer.get_graph_data();
         assert_eq!(nodes.len(), 2);
@@ -1166,7 +1168,7 @@ mod tests {
 
         let vault = VaultManager::new(dir.path());
         let mut indexer = Indexer::new(dir.path().to_path_buf());
-        indexer.rebuild(&vault).unwrap();
+        indexer.rebuild(vault.root()).unwrap();
 
         let (nodes, _) = indexer.get_graph_data();
         assert_eq!(nodes.len(), 1);
@@ -1186,7 +1188,7 @@ mod tests {
 
         let vault = VaultManager::new(dir.path());
         let mut indexer = Indexer::new(dir.path().to_path_buf());
-        indexer.rebuild(&vault).unwrap();
+        indexer.rebuild(vault.root()).unwrap();
 
         assert_eq!(indexer.get_graph_data().0.len(), 1);
         assert!(indexer.get_graph_data().1.is_empty());

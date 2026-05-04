@@ -328,7 +328,7 @@ pub async fn open_vault(
 
     let mut indexer = Indexer::new(vault_path.clone());
     indexer
-        .rebuild(&vault)
+        .rebuild(&vault_path)
         .map_err(|e| CommandError::Indexer(e.to_string()))?;
 
     let mut search =
@@ -595,12 +595,12 @@ pub async fn create_folder(
 pub async fn rebuild_index(state: State<'_, Mutex<AppState>>) -> Result<(), CommandError> {
     let mut s = state.lock().await;
 
-    // Step 1: Rebuild indexer (need vault ref + mut indexer)
+    // Step 1: Rebuild indexer — extract vault root path first, then mut borrow
+    let vault_root = s.vault.as_ref().ok_or(CommandError::VaultNotOpen)?.root().to_path_buf();
     {
-        let vault = s.vault.as_ref().ok_or(CommandError::VaultNotOpen)?;
         let indexer = s.indexer.as_mut().ok_or(CommandError::VaultNotOpen)?;
         indexer
-            .rebuild(vault)
+            .rebuild(&vault_root)
             .map_err(|e| CommandError::Indexer(e.to_string()))?;
     }
 
