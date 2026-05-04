@@ -1,356 +1,167 @@
 <script lang="ts">
-  // Svelte 5 runes
-  let sidebarWidth = $state(260);
-  let sidePanelWidth = $state(300);
-  let activeNote = $state<string | null>(null);
+  import { onMount } from 'svelte';
+  import './app.css';
+  import { getVaultStore } from './lib/stores/vault.svelte';
+  import { getEditorStore } from './lib/stores/editor.svelte';
+  import { getUiStore } from './lib/stores/ui.svelte';
+  import { getSearchStore } from './lib/stores/search.svelte';
+  import { watcher, listen } from './lib/ts/ipc';
+  import type { WatchEvent, UnlistenFn } from './lib/ts/ipc';
+  import Sidebar from './lib/components/Sidebar.svelte';
+  import TabBar from './lib/components/TabBar.svelte';
+  import EditorPane from './lib/components/EditorPane.svelte';
+  import SidePanel from './lib/components/SidePanel.svelte';
+  import StatusBar from './lib/components/StatusBar.svelte';
 
-  let notes = $state<string[]>([
-    "Welcome.md",
-    "Getting Started.md",
-    "Changelog.md",
-  ]);
+  const vault = getVaultStore();
+  const editor = getEditorStore();
+  const ui = getUiStore();
+  const search = getSearchStore();
 
-  let selectedNote = $state("Welcome.md");
+  let unlistenWatch: UnlistenFn | null = null;
 
-  let notesList = $derived(notes);
+  onMount(async () => {
+    // Listen for file system watch events from Rust backend
+    unlistenWatch = await listen<WatchEvent>('watch-event', (event) => {
+      vault.handleWatchEvent(event.payload);
+    });
 
+    // Global keyboard shortcuts
+    const handleGlobalKeydown = (e: KeyboardEvent) => {
+      // Ctrl+B: toggle sidebar
+      if (e.key === 'b' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        ui.toggleSidebar();
+      }
+      // Ctrl+\: toggle side panel
+      if (e.key === '\\' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        ui.toggleSidePanel();
+      }
+      // Ctrl+N: new note (when vault is open)
+      if (e.key === 'n' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+        e.preventDefault();
+        // TODO: trigger new note flow via command palette
+      }
+      // Ctrl+P: command palette
+      if (e.key === 'p' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        ui.setCommandPaletteOpen(!ui.commandPaletteOpen);
+      }
+    };
+
+    document.addEventListener('keydown', handleGlobalKeydown);
+
+    return () => {
+      unlistenWatch?.();
+      document.removeEventListener('keydown', handleGlobalKeydown);
+    };
+  });
+
+  // Start watcher when vault opens, stop on close
   $effect(() => {
-    if (selectedNote) {
-      activeNote = selectedNote;
+    if (vault.isOpen) {
+      watcher.start().catch(() => {});
+    } else {
+      watcher.stop().catch(() => {});
     }
   });
 
-  function selectNote(note: string) {
-    selectedNote = note;
+  // Click on empty area: clear search
+  function handleMainClick() {
+    search.clearResults();
   }
 </script>
 
 <div class="app">
-  <!-- Sidebar -->
-  <aside
-    class="sidebar"
-    style="width: {sidebarWidth}px;"
-  >
-    <header class="panel-header">
-      <h1 class="app-title">Lontar</h1>
-    </header>
-    <div class="search-box">
-      <input type="text" placeholder="Search notes…" />
+  {#if vault.isOpen}
+    <div class="main-layout">
+      <Sidebar />
+      <div class="editor-area">
+        <TabBar />
+        {#if editor.activeTab}
+          <div class="editor-container">
+            <EditorPane />
+            <SidePanel />
+          </div>
+        {:else}
+          <div class="empty-state">
+            <div class="empty-icon">📝</div>
+            <p>Select a note to start editing</p>
+            <p class="empty-hint">Ctrl+K to search · Ctrl+B to toggle sidebar</p>
+          </div>
+        {/if}
+      </div>
     </div>
-    <nav class="note-list">
-      {#each notesList as note}
-        <button
-          class="note-item"
-          class:active={selectedNote === note}
-          onclick={() => selectNote(note)}
-        >
-          {note}
-        </button>
-      {/each}
-    </nav>
-    <footer class="panel-footer">
-      <button class="new-note-btn">+ New Note</button>
-    </footer>
-  </aside>
-
-  <!-- Resize: sidebar | editor -->
-  <div class="resize-handle" data-resize="sidebar"></div>
-
-  <!-- Editor -->
-  <main class="editor">
-    {#if activeNote}
-      <div class="editor-toolbar">
-        <span class="editor-filename">{activeNote}</span>
+    <StatusBar />
+  {:else}
+    <div class="welcome-screen">
+      <div class="welcome-content">
+        <h1 class="app-title">Lontar</h1>
+        <p class="app-subtitle">A local-first knowledge base</p>
       </div>
-      <div class="editor-content">
-        <textarea placeholder="Start writing…"></textarea>
-      </div>
-    {:else}
-      <div class="editor-empty">
-        <p>Select a note or create a new one</p>
-      </div>
-    {/if}
-  </main>
-
-  <!-- Resize: editor | side panel -->
-  <div class="resize-handle" data-resize="side-panel"></div>
-
-  <!-- Side Panel -->
-  <aside
-    class="side-panel"
-    style="width: {sidePanelWidth}px;"
-  >
-    <header class="panel-header">
-      <h2>Outline</h2>
-    </header>
-    <div class="side-panel-content">
-      <p class="placeholder-text">Note outline will appear here.</p>
     </div>
-  </aside>
+  {/if}
 </div>
 
 <style>
-  :root {
-    --bg-primary: #1e1e2e;
-    --bg-secondary: #181825;
-    --bg-tertiary: #11111b;
-    --bg-hover: #313244;
-    --bg-active: #45475a;
-    --text-primary: #cdd6f4;
-    --text-secondary: #a6adc8;
-    --text-muted: #6c7086;
-    --accent: #89b4fa;
-    --accent-hover: #74c7ec;
-    --border: #313244;
-    --border-light: #45475a;
-    --resize-handle: #585b70;
-    --scrollbar-thumb: #45475a;
-    --scrollbar-track: transparent;
-    --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
-    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    --sidebar-width: 260px;
-    --side-panel-width: 300px;
-    --panel-header-height: 48px;
-  }
-
-  * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-  }
-
-  :global(body) {
-    font-family: var(--font-sans);
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    overflow: hidden;
-    height: 100vh;
-    width: 100vw;
-  }
-
-  :global(::-webkit-scrollbar) {
-    width: 6px;
-  }
-  :global(::-webkit-scrollbar-track) {
-    background: var(--scrollbar-track);
-  }
-  :global(::-webkit-scrollbar-thumb) {
-    background: var(--scrollbar-thumb);
-    border-radius: 3px;
-  }
-
   .app {
-    display: grid;
-    grid-template-columns: auto 4px 1fr 4px auto;
+    display: flex;
+    flex-direction: column;
     height: 100vh;
     width: 100vw;
-  }
-
-  /* ── Sidebar ── */
-  .sidebar {
-    background: var(--bg-secondary);
-    display: flex;
-    flex-direction: column;
     overflow: hidden;
-    min-width: 180px;
-  }
-
-  .panel-header {
-    height: var(--panel-header-height);
-    display: flex;
-    align-items: center;
-    padding: 0 16px;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-
-  .app-title {
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: var(--accent);
-    letter-spacing: 0.5px;
-  }
-
-  .panel-header h2 {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-  }
-
-  .search-box {
-    padding: 8px 12px;
-    flex-shrink: 0;
-  }
-
-  .search-box input {
-    width: 100%;
-    padding: 8px 12px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    font-size: 0.85rem;
-    outline: none;
-    transition: border-color 0.15s;
-  }
-
-  .search-box input:focus {
-    border-color: var(--accent);
-  }
-
-  .search-box input::placeholder {
-    color: var(--text-muted);
-  }
-
-  .note-list {
-    flex: 1;
-    overflow-y: auto;
-    padding: 4px 8px;
-  }
-
-  .note-item {
-    display: block;
-    width: 100%;
-    text-align: left;
-    padding: 8px 12px;
-    border: none;
-    border-radius: 6px;
-    background: transparent;
-    color: var(--text-secondary);
-    font-size: 0.85rem;
-    cursor: pointer;
-    transition: background 0.1s, color 0.1s;
-    margin-bottom: 2px;
-  }
-
-  .note-item:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-  }
-
-  .note-item.active {
-    background: var(--bg-active);
-    color: var(--text-primary);
-    font-weight: 500;
-  }
-
-  .panel-footer {
-    padding: 8px 12px;
-    border-top: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-
-  .new-note-btn {
-    width: 100%;
-    padding: 8px;
-    border: 1px dashed var(--border-light);
-    border-radius: 6px;
-    background: transparent;
-    color: var(--text-muted);
-    font-size: 0.8rem;
-    cursor: pointer;
-    transition: color 0.15s, border-color 0.15s;
-  }
-
-  .new-note-btn:hover {
-    color: var(--accent);
-    border-color: var(--accent);
-  }
-
-  /* ── Resize Handle ── */
-  .resize-handle {
-    background: var(--resize-handle);
-    cursor: col-resize;
-    transition: background 0.15s;
-    position: relative;
-    z-index: 10;
-  }
-
-  .resize-handle:hover,
-  .resize-handle:active {
-    background: var(--accent);
-  }
-
-  /* ── Editor ── */
-  .editor {
     background: var(--bg-primary);
+    color: var(--text-primary);
+  }
+  .main-layout {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+  .editor-area {
+    flex: 1;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    min-width: 300px;
+    min-width: 0;
   }
-
-  .editor-toolbar {
-    height: var(--panel-header-height);
-    display: flex;
-    align-items: center;
-    padding: 0 20px;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-
-  .editor-filename {
-    font-size: 0.85rem;
-    font-weight: 500;
-    color: var(--text-secondary);
-  }
-
-  .editor-content {
+  .editor-container {
     flex: 1;
     display: flex;
-    flex-direction: column;
+    overflow: hidden;
   }
-
-  .editor-content textarea {
-    flex: 1;
-    padding: 20px;
-    border: none;
-    background: transparent;
-    color: var(--text-primary);
-    font-family: var(--font-mono);
-    font-size: 0.9rem;
-    line-height: 1.7;
-    resize: none;
-    outline: none;
-    tab-size: 2;
-  }
-
-  .editor-content textarea::placeholder {
-    color: var(--text-muted);
-  }
-
-  .editor-empty {
+  .welcome-screen {
     flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
   }
-
-  .editor-empty p {
+  .welcome-content {
+    text-align: center;
+  }
+  .app-title {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--accent);
+    margin: 0 0 8px 0;
+    letter-spacing: 2px;
+  }
+  .app-subtitle {
     color: var(--text-muted);
     font-size: 0.9rem;
+    margin: 0;
   }
-
-  /* ── Side Panel ── */
-  .side-panel {
-    background: var(--bg-secondary);
+  .empty-state {
+    flex: 1;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
-    min-width: 180px;
-  }
-
-  .side-panel-content {
-    flex: 1;
-    overflow-y: auto;
-    padding: 16px;
-  }
-
-  .placeholder-text {
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
     color: var(--text-muted);
-    font-size: 0.8rem;
-    font-style: italic;
   }
+  .empty-icon { font-size: 2.5rem; opacity: 0.5; }
+  .empty-state p { margin: 0; font-size: 0.9rem; }
+  .empty-hint { font-size: 0.75rem !important; opacity: 0.6; }
 </style>
