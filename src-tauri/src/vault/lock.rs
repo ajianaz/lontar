@@ -171,10 +171,10 @@ impl VaultLock {
 
 impl Drop for VaultLock {
     fn drop(&mut self) {
-        if self.held {
-            if let Err(e) = self.release() {
-                eprintln!("vault lock: failed to release on drop: {e}");
-            }
+        if self.held
+            && let Err(e) = self.release()
+        {
+            eprintln!("vault lock: failed to release on drop: {e}");
         }
     }
 }

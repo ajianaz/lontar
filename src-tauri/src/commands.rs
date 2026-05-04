@@ -3,7 +3,7 @@
 //! Every command is an `async fn` decorated with `#[tauri::command]`.
 //! State is held in [`AppState`] behind `tokio::sync::Mutex`.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
@@ -105,6 +105,7 @@ pub enum WatchEventPayload {
 // ---------------------------------------------------------------------------
 
 /// Managed state shared across all Tauri commands.
+#[derive(Default)]
 pub struct AppState {
     pub vault: Option<VaultManager>,
     pub indexer: Option<Indexer>,
@@ -113,19 +114,6 @@ pub struct AppState {
     pub app_handle: Option<AppHandle<tauri::Wry>>,
     /// Cancellation token for the watcher event-loop task (if running).
     watcher_cancel: Option<CancellationToken>,
-}
-
-impl Default for AppState {
-    fn default() -> Self {
-        Self {
-            vault: None,
-            indexer: None,
-            search: None,
-            watcher: None,
-            app_handle: None,
-            watcher_cancel: None,
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -174,7 +162,7 @@ fn sanitize_path(input: &str) -> Result<PathBuf, CommandError> {
 ///
 /// If the path is outside the vault, returns `"[outside-vault]"` to avoid
 /// leaking absolute filesystem paths to the frontend webview.
-fn strip_vault_prefix(absolute: &PathBuf, vault_root: &PathBuf) -> String {
+fn strip_vault_prefix(absolute: &Path, vault_root: &Path) -> String {
     absolute
         .strip_prefix(vault_root)
         .map(|p| p.to_string_lossy().into_owned())
@@ -285,7 +273,7 @@ fn parse_iso_to_micros(s: &str) -> i64 {
     // Compute days since Unix epoch using civil calendar algorithm.
     let days = days_from_civil(year, month, day);
     // Microseconds from the date + time components.
-    days as i64 * 86_400_000_000
+    days * 86_400_000_000
         + hour as i64 * 3_600_000_000
         + minute as i64 * 60_000_000
         + second as i64 * 1_000_000
@@ -326,7 +314,7 @@ pub async fn open_vault(
 
     let search_index_path = vault_path.join(".vault-index").join("search");
 
-    let mut indexer = Indexer::new(vault_path.clone());
+    let mut indexer = Indexer::new();
     indexer
         .rebuild(&vault_path)
         .map_err(|e| CommandError::Indexer(e.to_string()))?;
@@ -841,10 +829,7 @@ pub async fn start_watcher(state: State<'_, Mutex<AppState>>) -> Result<(), Comm
         .start()
         .map_err(|e| CommandError::Watcher(e.to_string()))?;
 
-    let app_handle = s
-        .app_handle
-        .clone()
-        .ok_or_else(|| CommandError::VaultNotOpen)?;
+    let app_handle = s.app_handle.clone().ok_or(CommandError::VaultNotOpen)?;
 
     let cancel = CancellationToken::new();
     let cancel_clone = cancel.clone();

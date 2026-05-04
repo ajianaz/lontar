@@ -208,7 +208,7 @@ impl SearchEngine {
         doc.add_text(title_field, title);
         doc.add_text(body_field, body);
         doc.add_text(path_field, path);
-        doc.add_text(tags_field, &tags.join(", "));
+        doc.add_text(tags_field, tags.join(", "));
         doc.add_date(modified_field, modified);
         doc.add_date(created_field, created);
 
@@ -279,10 +279,10 @@ impl SearchEngine {
             let tags_str = Self::stored_text(&doc, self.tags_field);
 
             // Tag post-filter.
-            if let Some(filter) = tag_filter {
-                if !tags_str.split(',').any(|t| t.trim() == filter) {
-                    continue;
-                }
+            if let Some(filter) = tag_filter
+                && !tags_str.split(',').any(|t| t.trim() == filter)
+            {
+                continue;
             }
 
             let body = Self::stored_text(&doc, self.body_field);

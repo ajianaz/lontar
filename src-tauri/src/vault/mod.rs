@@ -82,10 +82,7 @@ impl TreeEntry {
         let mut dirs: Vec<PathBuf> = Vec::new();
         let mut files: Vec<TreeEntry> = Vec::new();
 
-        let entries = match fs::read_dir(dir) {
-            Ok(rd) => rd,
-            Err(e) => return Err(e),
-        };
+        let entries = fs::read_dir(dir)?;
 
         for entry in entries.filter_map(|e| e.ok()) {
             let file_name = entry.file_name();
@@ -327,7 +324,7 @@ impl VaultManager {
     /// the file is either fully written or not at all.
     pub fn create_note(&self, path: &str, content: &str) -> io::Result<()> {
         let full = self.vault_path_create(path)?;
-        let parent_existed = full.parent().map_or(true, |p| p.exists());
+        let parent_existed = full.parent().is_none_or(|p| p.exists());
         if let Some(parent) = full.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -335,10 +332,8 @@ impl VaultManager {
             Ok(()) => Ok(()),
             Err(e) => {
                 // Clean up empty parent dirs if we created them
-                if !parent_existed {
-                    if let Some(parent) = full.parent() {
-                        let _ = std::fs::remove_dir(parent);
-                    }
+                if !parent_existed && let Some(parent) = full.parent() {
+                    let _ = std::fs::remove_dir(parent);
                 }
                 Err(e)
             }
@@ -372,7 +367,7 @@ impl VaultManager {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_millis())
-            .map_err(|_| io::Error::new(io::ErrorKind::Other, "system clock before unix epoch"))?;
+            .map_err(|_| io::Error::other("system clock before unix epoch"))?;
 
         let trash_path = self
             .root

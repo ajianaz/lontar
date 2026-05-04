@@ -14,7 +14,7 @@ use std::sync::LazyLock;
 
 static RE_WIKILINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[([^\]]+?)\]\]").unwrap());
 static RE_INLINE_TAG: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?<!\w)#[A-Za-z][\w/-]*").unwrap());
+    LazyLock::new(|| Regex::new(r"\b#[A-Za-z][\w/-]*").unwrap());
 static RE_HEADING: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(#{1,6})\s+(.+)$").unwrap());
 use serde::Serialize;
 use walkdir::WalkDir;
@@ -123,14 +123,12 @@ pub struct VaultIndex {
 // ---------------------------------------------------------------------------
 
 pub struct Indexer {
-    vault_path: PathBuf,
     index: VaultIndex,
 }
 
 impl Indexer {
-    pub fn new(vault_path: PathBuf) -> Self {
+    pub fn new() -> Self {
         Self {
-            vault_path,
             index: VaultIndex::default(),
         }
     }
@@ -146,7 +144,7 @@ impl Indexer {
                 if !e.file_type().is_file() {
                     return false;
                 }
-                if !e.path().extension().is_some_and(|ext| ext == "md") {
+                if e.path().extension().is_none_or(|ext| ext != "md") {
                     return false;
                 }
                 !e.path()
@@ -358,7 +356,7 @@ impl Indexer {
             .iter()
             .map(|(tag, paths)| (tag.clone(), paths.len()))
             .collect();
-        tags.sort_by(|a, b| b.1.cmp(&a.1));
+        tags.sort_by_key(|b| std::cmp::Reverse(b.1));
         tags
     }
 
@@ -632,9 +630,9 @@ fn parse_wikilinks(body: &str) -> Vec<Wikilink> {
             Some(Wikilink {
                 raw,
                 target: target.to_string(),
-                heading: heading.map(String::from),
-                display_text: display_text.map(String::from),
-                block_id: block_id.map(String::from),
+                heading,
+                display_text,
+                block_id,
             })
         })
         .collect()
@@ -732,7 +730,7 @@ fn resolve_target(target: &str, notes: &HashMap<String, NoteData>) -> Option<Str
     }
 
     // 4. Match by filename stem
-    for (path, _note) in notes {
+    for path in notes.keys() {
         let stem = Path::new(path)
             .file_stem()
             .map(|s| s.to_string_lossy().into_owned())
@@ -744,7 +742,7 @@ fn resolve_target(target: &str, notes: &HashMap<String, NoteData>) -> Option<Str
 
     // 5. Case-insensitive fallback (for case-insensitive filesystems)
     let target_lower = target.to_lowercase();
-    for (path, _note) in notes {
+    for path in notes.keys() {
         let path_lower = path.to_lowercase();
         if path_lower == target_lower || path_lower == format!("{target_lower}.md") {
             return Some(path.clone());
@@ -755,7 +753,7 @@ fn resolve_target(target: &str, notes: &HashMap<String, NoteData>) -> Option<Str
             return Some(path.clone());
         }
     }
-    for (path, _note) in notes {
+    for path in notes.keys() {
         let stem = Path::new(path)
             .file_stem()
             .map(|s| s.to_string_lossy().into_owned())
@@ -946,7 +944,7 @@ mod tests {
         fs::write(dir.path().join("b.md"), "# B\nLinks to [[a]]\n").unwrap();
 
         let vault = VaultManager::new(dir.path());
-        let mut indexer = Indexer::new(dir.path().to_path_buf());
+        let mut indexer = Indexer::new();
         indexer.rebuild(vault.root()).unwrap();
 
         let (nodes, edges) = indexer.get_graph_data();
@@ -972,7 +970,7 @@ mod tests {
         fs::write(dir.path().join("b.md"), "# B Note\nNo outgoing links\n").unwrap();
 
         let vault = VaultManager::new(dir.path());
-        let mut indexer = Indexer::new(dir.path().to_path_buf());
+        let mut indexer = Indexer::new();
         indexer.rebuild(vault.root()).unwrap();
 
         let backlinks = indexer.get_backlinks("b.md");
@@ -990,7 +988,7 @@ mod tests {
         fs::write(dir.path().join("b.md"), "# B\n").unwrap();
 
         let vault = VaultManager::new(dir.path());
-        let mut indexer = Indexer::new(dir.path().to_path_buf());
+        let mut indexer = Indexer::new();
         indexer.rebuild(vault.root()).unwrap();
 
         assert_eq!(indexer.get_backlinks("b.md").len(), 1);
@@ -1014,7 +1012,7 @@ mod tests {
         fs::write(dir.path().join("my-note.md"), "# My Note\n").unwrap();
 
         let vault = VaultManager::new(dir.path());
-        let mut indexer = Indexer::new(dir.path().to_path_buf());
+        let mut indexer = Indexer::new();
         indexer.rebuild(vault.root()).unwrap();
 
         // Resolve by filename stem
@@ -1065,7 +1063,7 @@ mod tests {
         fs::write(dir.path().join("c.md"), "# C\n").unwrap();
 
         let vault = VaultManager::new(dir.path());
-        let mut indexer = Indexer::new(dir.path().to_path_buf());
+        let mut indexer = Indexer::new();
         indexer.rebuild(vault.root()).unwrap();
 
         let tags = indexer.get_tags();
@@ -1085,7 +1083,7 @@ mod tests {
         fs::write(dir.path().join("b.md"), "# B\n").unwrap();
 
         let vault = VaultManager::new(dir.path());
-        let mut indexer = Indexer::new(dir.path().to_path_buf());
+        let mut indexer = Indexer::new();
         indexer.rebuild(vault.root()).unwrap();
         assert_eq!(indexer.get_graph_data().0.len(), 2);
         assert!(indexer.get_graph_data().1.is_empty());
@@ -1145,7 +1143,7 @@ mod tests {
         fs::write(dir.path().join("sub/deep/b.md"), "# B\n").unwrap();
 
         let vault = VaultManager::new(dir.path());
-        let mut indexer = Indexer::new(dir.path().to_path_buf());
+        let mut indexer = Indexer::new();
         indexer.rebuild(vault.root()).unwrap();
 
         let (nodes, edges) = indexer.get_graph_data();
@@ -1167,7 +1165,7 @@ mod tests {
         fs::write(dir.path().join("visible.md"), "# Visible\n").unwrap();
 
         let vault = VaultManager::new(dir.path());
-        let mut indexer = Indexer::new(dir.path().to_path_buf());
+        let mut indexer = Indexer::new();
         indexer.rebuild(vault.root()).unwrap();
 
         let (nodes, _) = indexer.get_graph_data();
@@ -1187,7 +1185,7 @@ mod tests {
         .unwrap();
 
         let vault = VaultManager::new(dir.path());
-        let mut indexer = Indexer::new(dir.path().to_path_buf());
+        let mut indexer = Indexer::new();
         indexer.rebuild(vault.root()).unwrap();
 
         assert_eq!(indexer.get_graph_data().0.len(), 1);

@@ -351,7 +351,7 @@ fn flush_pending(pending: &HashMap<PathBuf, RawEvent>, tx: &mpsc::UnboundedSende
         return;
     }
 
-    for (_path, raw) in pending {
+    for raw in pending.values() {
         let event = match raw {
             RawEvent::Created(p) => WatchEvent::Created(p.clone()),
             RawEvent::Modified(p) => WatchEvent::Modified(p.clone()),
