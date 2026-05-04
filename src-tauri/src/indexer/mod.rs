@@ -126,6 +126,12 @@ pub struct Indexer {
     index: VaultIndex,
 }
 
+impl Default for Indexer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Indexer {
     pub fn new() -> Self {
         Self {
