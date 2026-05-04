@@ -3,21 +3,19 @@
 //! Every command is an `async fn` decorated with `#[tauri::command]`.
 //! State is held in [`AppState`] behind `tokio::sync::Mutex`.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use thiserror::Error;
-use tokio::sync::Mutex;
+use tokio::sync::{watch, Mutex};
+use tokio_util::sync::CancellationToken;
 
 use crate::indexer::{Backlink, GraphEdge, Indexer, NoteData, Wikilink};
 use crate::search::SearchEngine;
 use crate::vault::{TreeEntry, VaultManager};
 use crate::watcher::VaultWatcher;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use tokio::sync::{watch, Mutex};
-use tokio_util::sync::CancellationToken;
 
 // ---------------------------------------------------------------------------
 // CommandError
@@ -765,7 +763,11 @@ pub async fn start_watcher(state: State<'_, Mutex<AppState>>) -> Result<(), Comm
         token.cancel();
     }
 
-    let vault_root = s.vault.as_ref().map(|v| v.root().to_path_buf()).ok_or(CommandError::VaultNotOpen)?;
+    let vault_root = s
+        .vault
+        .as_ref()
+        .map(|v| v.root().to_path_buf())
+        .ok_or(CommandError::VaultNotOpen)?;
 
     let watcher = s.watcher.as_mut().ok_or(CommandError::VaultNotOpen)?;
     let rx = watcher

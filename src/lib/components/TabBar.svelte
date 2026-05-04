@@ -13,7 +13,7 @@
         onclick={() => editor.setActiveTabIndex(i)}
       >
         <span class="tab-title">{tab.isDirty ? '● ' : ''}{tab.title}</span>
-        <span class="tab-close" onclick|stopPropagation={() => editor.closeTab(i)} title="Close">✕</span>
+        <span class="tab-close" onclick={(e) => { e.stopPropagation(); editor.closeTab(i); }} title="Close">✕</span>
       </button>
     {/each}
   </div>

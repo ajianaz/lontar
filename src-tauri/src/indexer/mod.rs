@@ -794,7 +794,9 @@ mod tests {
 
     #[test]
     fn test_parse_frontmatter() {
-        let content = "---\ntitle: My Note\ntags: [rust, programming]\naliases: [My Note, MN]\ncreated: 2024-01-01\n---\n# Hello\nContent here";
+        let content = "---\ntitle: My Note\ntags: [rust, programming]\n"
+            + "aliases: [My Note, MN]\ncreated: 2024-01-01\n"
+            + "---\n# Hello\nContent here";
         let (fm, body) = split_and_parse_frontmatter(content);
         assert_eq!(fm.title, Some("My Note".to_string()));
         assert_eq!(fm.tags, vec!["rust", "programming"]);
@@ -852,7 +854,8 @@ mod tests {
 
     #[test]
     fn test_parse_wikilinks() {
-        let body = "See [[Note A]] and [[Note B#Heading]] and [[Note C|Display]] and [[Note D^block]] and [[Note E#Sec^blk|Disp]]";
+        let body = "See [[Note A]] and [[Note B#Heading]] and [[Note C|Display]]"
+            + " and [[Note D^block]] and [[Note E#Sec^blk|Disp]]";
         let links = parse_wikilinks(body);
         assert_eq!(links.len(), 5);
 
@@ -881,7 +884,8 @@ mod tests {
 
     #[test]
     fn test_parse_inline_tags() {
-        let body = "Some #rust and #web-dev content\n```code\n#notatag here\n```\nMore #programming";
+        let body = "Some #rust and #web-dev content\n```code\n#notatag here\n```\n"
+            + "More #programming";
         let tags = parse_inline_tags(body);
         assert!(tags.contains(&"rust".to_string()));
         assert!(tags.contains(&"web-dev".to_string()));
