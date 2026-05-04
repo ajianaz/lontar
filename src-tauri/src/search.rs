@@ -4,11 +4,13 @@ use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use regex;
 use serde::Serialize;
 use tantivy::collector::TopDocs;
 use tantivy::directory::MmapDirectory;
-use tantivy::query::{QueryParser, TermPrefixQuery};
-use tantivy::schema::{Document, FAST, Field, STORED, STRING, Schema, TEXT};
+use tantivy::query::{QueryParser, RegexQuery};
+use tantivy::schema::{FAST, Field, STORED, STRING, Schema, TEXT};
+use tantivy::TantivyDocument;
 use tantivy::{DateTime, Index, IndexReader, IndexWriter, SnippetGenerator, Term};
 
 // ---------------------------------------------------------------------------
@@ -95,6 +97,8 @@ pub struct SearchResult {
 pub struct SearchEngine {
     /// Directory holding the tantivy index.
     index_path: PathBuf,
+    /// The tantivy index (kept for writer creation).
+    index: Index,
     /// Reader kept alive for querying.
     reader: IndexReader,
     /// Writer created lazily, flushed on drop.
@@ -136,12 +140,14 @@ impl SearchEngine {
 
         let (schema, title, body, path, tags, modified, created) = Self::build_schema();
 
-        let dir = MmapDirectory::open(&index_path)?;
+        let dir = MmapDirectory::open(&index_path)
+            .map_err(|e| SearchError::Schema(format!("failed to open index directory: {e}")))?;
         let index = Index::open_or_create(dir, schema)?;
         let reader = index.reader()?;
 
         Ok(Self {
             index_path,
+            index,
             reader,
             writer: None,
             title_field: title,
@@ -161,7 +167,7 @@ impl SearchEngine {
     /// call with a 50 MB heap budget.
     pub fn open_writer(&mut self) -> Result<&mut IndexWriter, SearchError> {
         if self.writer.is_none() {
-            let writer = self.reader.index().writer(50_000_000)?;
+            let writer = self.index.writer(50_000_000)?;
             self.writer = Some(writer);
         }
         Ok(self.writer.as_mut().expect("writer just created"))
@@ -192,7 +198,7 @@ impl SearchEngine {
         writer.delete_term(term);
 
         // Build the new document.
-        let mut doc = Document::default();
+        let mut doc = TantivyDocument::default();
         doc.add_text(self.title_field, title);
         doc.add_text(self.body_field, body);
         doc.add_text(self.path_field, path);
@@ -208,8 +214,9 @@ impl SearchEngine {
     ///
     /// The delete is **not** visible until [`commit`](Self::commit).
     pub fn delete_note(&mut self, path: &str) -> Result<(), SearchError> {
+        let path_field = self.path_field;
         let writer = self.open_writer()?;
-        let term = Term::from_field_text(self.path_field, path);
+        let term = Term::from_field_text(path_field, path);
         writer.delete_term(term);
         Ok(())
     }
@@ -259,7 +266,7 @@ impl SearchEngine {
         let mut results = Vec::with_capacity(limit);
 
         for (score, doc_addr) in top_docs {
-            let doc = searcher.doc(doc_addr)?;
+            let doc: TantivyDocument = searcher.doc(doc_addr)?;
 
             let path = Self::stored_text(&doc, self.path_field);
             let title = Self::stored_text(&doc, self.title_field);
@@ -310,8 +317,9 @@ impl SearchEngine {
     pub fn suggest(&self, prefix: &str, limit: usize) -> Result<Vec<String>, SearchError> {
         let searcher = self.reader.searcher();
 
-        let term = Term::from_field_text(self.title_field, prefix);
-        let query = TermPrefixQuery::new(term);
+        let escaped = regex::escape(prefix);
+        let pattern = format!("^{escaped}.*");
+        let query = RegexQuery::from_pattern(&pattern, self.title_field)?;
 
         let top_docs = searcher.search(&query, &TopDocs::with_limit(limit))?;
 
@@ -319,7 +327,7 @@ impl SearchEngine {
         let mut seen: HashSet<String> = HashSet::with_capacity(limit);
 
         for (_score, doc_addr) in top_docs {
-            let doc = searcher.doc(doc_addr)?;
+            let doc: TantivyDocument = searcher.doc(doc_addr)?;
             let title = Self::stored_text(&doc, self.title_field);
 
             if seen.insert(title.clone()) {
@@ -359,7 +367,7 @@ impl SearchEngine {
 
     /// Extract a stored text value from a [`Document`], defaulting to empty
     /// string.
-    fn stored_text(doc: &Document, field: Field) -> String {
+    fn stored_text(doc: &TantivyDocument, field: Field) -> String {
         doc.get_first(field)
             .and_then(|v| v.as_text())
             .unwrap_or_default()
@@ -373,7 +381,7 @@ impl SearchEngine {
 
 impl Drop for SearchEngine {
     fn drop(&mut self) {
-        if let Some(writer) = self.writer.take() {
+        if let Some(mut writer) = self.writer.take() {
             // Best-effort commit on drop; ignore errors.
             let _ = writer.commit();
         }

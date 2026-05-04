@@ -8,6 +8,8 @@
 //! check-and-create, eliminating TOCTOU races between stale-lock removal
 //! and new-lock creation.
 
+extern crate libc;
+
 use serde::{Deserialize, Serialize};
 use std::io;
 use std::path::{Path, PathBuf};
@@ -47,6 +49,12 @@ impl From<io::Error> for LockError {
     }
 }
 
+impl From<serde_json::Error> for LockError {
+    fn from(e: serde_json::Error) -> Self {
+        LockError::Io(io::Error::new(io::ErrorKind::InvalidData, e))
+    }
+}
+
 /// JSON payload stored in the lock file.
 #[derive(Serialize, Deserialize)]
 struct LockInfo {
@@ -58,6 +66,7 @@ struct LockInfo {
 /// Exclusive lock on a vault directory.
 ///
 /// Acquired via [`VaultLock::acquire`]. Automatically released on drop.
+#[derive(Debug)]
 pub struct VaultLock {
     path: PathBuf,
     held: bool,
@@ -85,7 +94,7 @@ impl VaultLock {
 
         let info = LockInfo {
             pid: std::process::id(),
-            host: hostname(),
+            host: hostname().unwrap_or_else(|_| String::from("unknown")),
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_secs())

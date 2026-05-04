@@ -3,13 +3,12 @@
 //! Every command is an `async fn` decorated with `#[tauri::command]`.
 //! State is held in [`AppState`] behind `tokio::sync::Mutex`.
 
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::path::PathBuf;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use thiserror::Error;
-use tokio::sync::{Mutex, watch};
+use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 use crate::indexer::{Backlink, GraphEdge, Indexer, NoteData, Wikilink};
@@ -295,13 +294,13 @@ fn parse_iso_to_micros(s: &str) -> i64 {
 /// Convert a civil (year, month, day) date to days since 1970-01-01.
 ///
 /// Uses Howard Hinnant's algorithm.
-fn days_from_civil(y: i32, m: u32, d: u32) -> i32 {
+fn days_from_civil(y: i32, m: u32, d: u32) -> i64 {
     let y = if m <= 2 { y - 1 } else { y };
     let era = (if y >= 0 { y } else { y - 399 }) / 400;
     let yoe = y - era * 400;
     let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    era * 146097 + doe - 719468
+    let doe = (yoe as i64) * 365 + (yoe / 4) as i64 - (yoe / 100) as i64 + (doy as i64);
+    (era as i64) * 146097 + doe - 719468
 }
 
 // ===========================================================================
@@ -424,15 +423,23 @@ pub async fn create_note(
         return Err(CommandError::Vault("path contains null byte".into()));
     }
     let mut s = state.lock().await;
-    let vault = s.vault.as_ref().ok_or(CommandError::VaultNotOpen)?;
-    vault
-        .create_note(trimmed, &content)
-        .map_err(|e| CommandError::Io(e.to_string()))?;
+    {
+        let vault = s.vault.as_ref().ok_or(CommandError::VaultNotOpen)?;
+        vault
+            .create_note(trimmed, &content)
+            .map_err(|e| CommandError::Io(e.to_string()))?;
+    }
 
-    let indexer = s.indexer.as_mut().ok_or(CommandError::VaultNotOpen)?;
-    indexer
-        .index_file(vault, trimmed)
-        .map_err(|e| CommandError::Indexer(e.to_string()))?;
+    {
+        let full_path = {
+            let vault = s.vault.as_ref().ok_or(CommandError::VaultNotOpen)?;
+            vault.resolve_path(trimmed).map_err(|e| CommandError::Io(e.to_string()))?
+        };
+        let indexer = s.indexer.as_mut().ok_or(CommandError::VaultNotOpen)?;
+        indexer
+            .index_file_at(&full_path, trimmed)
+            .map_err(|e| CommandError::Indexer(e.to_string()))?;
+    }
 
     reindex_search_from_note(&mut s, trimmed)?;
 
@@ -451,15 +458,24 @@ pub async fn update_note(
         return Err(CommandError::Vault("path contains null byte".into()));
     }
     let mut s = state.lock().await;
-    let vault = s.vault.as_ref().ok_or(CommandError::VaultNotOpen)?;
-    vault
-        .update_note(trimmed, &content)
-        .map_err(|e| CommandError::Io(e.to_string()))?;
+    {
+        let vault = s.vault.as_ref().ok_or(CommandError::VaultNotOpen)?;
+        vault
+            .update_note(trimmed, &content)
+            .map_err(|e| CommandError::Io(e.to_string()))?;
+    }
 
-    let indexer = s.indexer.as_mut().ok_or(CommandError::VaultNotOpen)?;
-    indexer
-        .index_file(vault, trimmed)
-        .map_err(|e| CommandError::Indexer(e.to_string()))?;
+    // Re-index.
+    {
+        let full_path = {
+            let vault = s.vault.as_ref().ok_or(CommandError::VaultNotOpen)?;
+            vault.resolve_path(trimmed).map_err(|e| CommandError::Io(e.to_string()))?
+        };
+        let indexer = s.indexer.as_mut().ok_or(CommandError::VaultNotOpen)?;
+        indexer
+            .index_file_at(&full_path, trimmed)
+            .map_err(|e| CommandError::Indexer(e.to_string()))?;
+    }
 
     reindex_search_from_note(&mut s, trimmed)?;
 
@@ -509,24 +525,37 @@ pub async fn rename_note(
         return Err(CommandError::Vault("path contains null byte".into()));
     }
     let mut s = state.lock().await;
-    let vault = s.vault.as_ref().ok_or(CommandError::VaultNotOpen)?;
-    vault
-        .rename_note(old_trimmed, new_trimmed)
-        .map_err(|e| CommandError::Io(e.to_string()))?;
+    {
+        let vault = s.vault.as_ref().ok_or(CommandError::VaultNotOpen)?;
+        vault
+            .rename_note(old_trimmed, new_trimmed)
+            .map_err(|e| CommandError::Io(e.to_string()))?;
+    }
 
     // Remove old from index + search.
-    let indexer = s.indexer.as_mut().ok_or(CommandError::VaultNotOpen)?;
-    indexer.remove_file(old_trimmed);
+    {
+        let indexer = s.indexer.as_mut().ok_or(CommandError::VaultNotOpen)?;
+        indexer.remove_file(old_trimmed);
+    }
 
-    let search = s.search.as_mut().ok_or(CommandError::VaultNotOpen)?;
-    search
-        .delete_note(old_trimmed)
-        .map_err(|e| CommandError::Search(e.to_string()))?;
+    {
+        let search = s.search.as_mut().ok_or(CommandError::VaultNotOpen)?;
+        search
+            .delete_note(old_trimmed)
+            .map_err(|e| CommandError::Search(e.to_string()))?;
+    }
 
     // Index new file.
-    indexer
-        .index_file(vault, new_trimmed)
-        .map_err(|e| CommandError::Indexer(e.to_string()))?;
+    {
+        let full_path = {
+            let vault = s.vault.as_ref().ok_or(CommandError::VaultNotOpen)?;
+            vault.resolve_path(new_trimmed).map_err(|e| CommandError::Io(e.to_string()))?
+        };
+        let indexer = s.indexer.as_mut().ok_or(CommandError::VaultNotOpen)?;
+        indexer
+            .index_file_at(&full_path, new_trimmed)
+            .map_err(|e| CommandError::Indexer(e.to_string()))?;
+    }
 
     reindex_search_from_note(&mut s, new_trimmed)?;
 

@@ -221,7 +221,13 @@ impl Indexer {
     /// Index or re-index a single file by relative path.
     pub fn index_file(&mut self, vault: &VaultManager, path: &str) -> Result<(), IndexerError> {
         let full_path = vault.resolve_path(path).map_err(IndexerError::Io)?;
-        let content = std::fs::read_to_string(&full_path).map_err(IndexerError::Io)?;
+        self.index_file_at(&full_path, path)
+    }
+
+    /// Index or re-index a single file given its pre-resolved absolute path.
+    /// This avoids holding an immutable vault reference while borrowing self mutably.
+    pub fn index_file_at(&mut self, full_path: &Path, path: &str) -> Result<(), IndexerError> {
+        let content = std::fs::read_to_string(full_path).map_err(IndexerError::Io)?;
         let (note_data, body) = parse_note(path, &content);
 
         // Clean up old outgoing link graph/backlink entries

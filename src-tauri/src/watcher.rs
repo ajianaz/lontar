@@ -168,7 +168,7 @@ impl VaultWatcher {
 
         // 3. Build the notify watcher (runs on its own thread).
         let root = self.root.clone();
-        let watcher = {
+        let mut watcher = {
             let raw_tx_inner = raw_tx.clone();
             let root_for_filter = root.clone();
 
@@ -326,7 +326,7 @@ fn insert_coalesced(map: &mut HashMap<PathBuf, RawEvent>, event: RawEvent) {
     map.entry(path)
         .and_modify(|existing| {
             use RawEvent::*;
-            match (existing, &event) {
+            match (&*existing, &event) {
                 (Created(_), Modified(_)) => {}      // Created wins
                 (Modified(_), Modified(_)) => {}     // dedup
                 (_, _) => *existing = event.clone(), // new type replaces
@@ -473,7 +473,7 @@ mod tests {
         fs::create_dir_all(dir.path().join(".vault-index")).unwrap();
 
         thread::sleep(Duration::from_millis(200));
-        let events: Vec<_> = rx.try_iter().collect();
+        let events: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
         assert!(
             events.is_empty(),
             "hidden files/dirs should be ignored, got: {events:?}"
@@ -490,7 +490,7 @@ mod tests {
         fs::write(dir.path().join("data.json"), "{}").unwrap();
 
         thread::sleep(Duration::from_millis(200));
-        let events: Vec<_> = rx.try_iter().collect();
+        let events: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
         assert!(
             events.is_empty(),
             "non-.md files should be ignored, got: {events:?}"

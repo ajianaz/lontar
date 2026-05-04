@@ -163,7 +163,7 @@ impl VaultManager {
         // when the root itself contains symlink components.
         let canonical_root = raw
             .canonicalize()
-            .map_err(|e| VaultError::InvalidRoot(e.to_string()))?;
+            .map_err(|_| VaultError::InvalidRoot(raw.clone()))?;
         let vm = Self {
             root: canonical_root,
         };
@@ -469,7 +469,7 @@ mod tests {
         assert_eq!(children.len(), 2);
 
         // First child: Dir "A"
-        let TreeEntry::Dir { name, ref children } = children[0] else {
+        let TreeEntry::Dir { name, ref children } = &children[0] else {
             panic!("expected Dir A");
         };
         assert_eq!(name, "A");
@@ -477,7 +477,7 @@ mod tests {
         // A's children: [Dir("Sub"), File("inner.md")]
         assert_eq!(children.len(), 2);
 
-        let TreeEntry::Dir { name, ref children } = children[0] else {
+        let TreeEntry::Dir { name, ref children } = &children[0] else {
             panic!("expected Dir Sub");
         };
         assert_eq!(name, "Sub");
@@ -608,7 +608,7 @@ mod tests {
         let vm = VaultManager::new(dir.path());
 
         vm.create_folder("new/nested/dir").unwrap();
-        let full = vm.resolve_path("new/nested/dir");
+        let full = vm.resolve_path("new/nested/dir").unwrap();
         assert!(full.is_dir());
         assert!(vm.path_exists("new/nested/dir"));
     }
@@ -640,7 +640,7 @@ mod tests {
         let dir = setup_vault();
         let vm = VaultManager::new(dir.path());
 
-        let abs = vm.resolve_path("notes/daily.md");
+        let abs = vm.resolve_path("notes/daily.md").unwrap();
         let rel = vm.relative_path(&abs).unwrap();
         assert_eq!(rel, "notes/daily.md");
     }
