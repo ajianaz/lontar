@@ -855,7 +855,7 @@ mod tests {
     fn test_parse_wikilinks() {
         let body = "See [[Note A]] and [[Note B#Heading]] and [[Note C|Display]]".to_string()
             + " and [[Note D^block]] and [[Note E#Sec^blk|Disp]]";
-        let links = parse_wikilinks(body);
+        let links = parse_wikilinks(&body);
         assert_eq!(links.len(), 5);
 
         assert_eq!(links[0].target, "Note A");
@@ -885,7 +885,7 @@ mod tests {
     fn test_parse_inline_tags() {
         let body = "Some #rust and #web-dev content\n```code\n#notatag here\n```\n".to_string()
             + "More #programming";
-        let tags = parse_inline_tags(body);
+        let tags = parse_inline_tags(&body);
         assert!(tags.contains(&"rust".to_string()));
         assert!(tags.contains(&"web-dev".to_string()));
         assert!(tags.contains(&"programming".to_string()));
