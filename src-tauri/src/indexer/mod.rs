@@ -138,7 +138,6 @@ impl Indexer {
     /// Full index rebuild. Walks all `.md` files, parses in parallel with
     /// rayon, then builds graph edges and backlinks in a single pass.
     pub fn rebuild(&mut self, vault_root: &Path) -> Result<(), IndexerError> {
-
         // Collect all .md file absolute paths, skip hidden dirs/files
         let md_files: Vec<PathBuf> = WalkDir::new(vault_root)
             .into_iter()
@@ -162,7 +161,8 @@ impl Indexer {
         let parsed: Vec<(String, NoteData, String)> = md_files
             .par_iter()
             .filter_map(|abs_path| {
-                let relative = abs_path.strip_prefix(&root)
+                let relative = abs_path
+                    .strip_prefix(&root)
                     .ok()
                     .map(|p| p.to_string_lossy().into_owned())?;
                 let content = std::fs::read_to_string(abs_path).ok()?;
