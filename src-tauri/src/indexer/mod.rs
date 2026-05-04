@@ -173,7 +173,7 @@ impl Indexer {
         let mut notes: HashMap<String, NoteData> = HashMap::with_capacity(parsed.len());
         let mut tag_index: HashMap<String, Vec<String>> = HashMap::new();
 
-        for (path, note_data) in &parsed {
+        for (path, note_data, _body) in &parsed {
             let mut all_tags: Vec<String> = note_data.frontmatter.tags.clone();
             for tag in &note_data.tags {
                 if !all_tags.contains(tag) {
@@ -742,7 +742,7 @@ fn resolve_target(target: &str, notes: &HashMap<String, NoteData>) -> Option<Str
 
     // 5. Case-insensitive fallback (for case-insensitive filesystems)
     let target_lower = target.to_lowercase();
-    for (path, note) in notes {
+    for (path, _note) in notes {
         let path_lower = path.to_lowercase();
         if path_lower == target_lower || path_lower == format!("{target_lower}.md") {
             return Some(path.clone());
@@ -796,7 +796,7 @@ mod tests {
         let content = String::from("---\ntitle: My Note\ntags: [rust, programming]\n")
             + "aliases: [My Note, MN]\\ncreated: 2024-01-01\\n"
             + "---\\n# Hello\\nContent here";
-        let (fm, body) = split_and_parse_frontmatter(content);
+        let (fm, body) = split_and_parse_frontmatter(&content);
         assert_eq!(fm.title, Some("My Note".to_string()));
         assert_eq!(fm.tags, vec!["rust", "programming"]);
         assert_eq!(fm.aliases, vec!["My Note", "MN"]);
@@ -853,7 +853,7 @@ mod tests {
 
     #[test]
     fn test_parse_wikilinks() {
-        let body = "See [[Note A]] and [[Note B#Heading]] and [[Note C|Display]]"
+        let body = "See [[Note A]] and [[Note B#Heading]] and [[Note C|Display]]".to_string()
             + " and [[Note D^block]] and [[Note E#Sec^blk|Disp]]";
         let links = parse_wikilinks(body);
         assert_eq!(links.len(), 5);
@@ -883,8 +883,8 @@ mod tests {
 
     #[test]
     fn test_parse_inline_tags() {
-        let body =
-            "Some #rust and #web-dev content\n```code\n#notatag here\n```\n" + "More #programming";
+        let body = "Some #rust and #web-dev content\n```code\n#notatag here\n```\n".to_string()
+            + "More #programming";
         let tags = parse_inline_tags(body);
         assert!(tags.contains(&"rust".to_string()));
         assert!(tags.contains(&"web-dev".to_string()));

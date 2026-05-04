@@ -191,20 +191,26 @@ impl SearchEngine {
         modified: DateTime,
         created: DateTime,
     ) -> Result<(), SearchError> {
+        let title_field = self.title_field;
+        let body_field = self.body_field;
+        let path_field = self.path_field;
+        let tags_field = self.tags_field;
+        let modified_field = self.modified_field;
+        let created_field = self.created_field;
         let writer = self.open_writer()?;
 
         // Delete any existing document with the same path.
-        let term = Term::from_field_text(self.path_field, path);
+        let term = Term::from_field_text(path_field, path);
         writer.delete_term(term);
 
         // Build the new document.
         let mut doc = TantivyDocument::default();
-        doc.add_text(self.title_field, title);
-        doc.add_text(self.body_field, body);
-        doc.add_text(self.path_field, path);
-        doc.add_text(self.tags_field, &tags.join(", "));
-        doc.add_date(self.modified_field, modified);
-        doc.add_date(self.created_field, created);
+        doc.add_text(title_field, title);
+        doc.add_text(body_field, body);
+        doc.add_text(path_field, path);
+        doc.add_text(tags_field, &tags.join(", "));
+        doc.add_date(modified_field, modified);
+        doc.add_date(created_field, created);
 
         writer.add_document(doc)?;
         Ok(())
@@ -369,7 +375,10 @@ impl SearchEngine {
     /// string.
     fn stored_text(doc: &TantivyDocument, field: Field) -> String {
         doc.get_first(field)
-            .and_then(|v| v.as_text())
+            .and_then(|v| match v {
+                tantivy::schema::OwnedValue::Str(s) => Some(s.as_str()),
+                _ => None,
+            })
             .unwrap_or_default()
             .to_string()
     }

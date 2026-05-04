@@ -469,7 +469,7 @@ mod tests {
         assert_eq!(children.len(), 2);
 
         // First child: Dir "A"
-        let TreeEntry::Dir { name, ref children } = &children[0] else {
+        let TreeEntry::Dir { name, children } = &children[0] else {
             panic!("expected Dir A");
         };
         assert_eq!(name, "A");
@@ -477,7 +477,7 @@ mod tests {
         // A's children: [Dir("Sub"), File("inner.md")]
         assert_eq!(children.len(), 2);
 
-        let TreeEntry::Dir { name, ref children } = &children[0] else {
+        let TreeEntry::Dir { name, children } = &children[0] else {
             panic!("expected Dir Sub");
         };
         assert_eq!(name, "Sub");

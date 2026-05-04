@@ -8,6 +8,7 @@
 //! check-and-create, eliminating TOCTOU races between stale-lock removal
 //! and new-lock creation.
 
+#[cfg(unix)]
 extern crate libc;
 
 use serde::{Deserialize, Serialize};
@@ -94,7 +95,7 @@ impl VaultLock {
 
         let info = LockInfo {
             pid: std::process::id(),
-            host: hostname().unwrap_or_else(|_| String::from("unknown")),
+            host: hostname(),
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_secs())

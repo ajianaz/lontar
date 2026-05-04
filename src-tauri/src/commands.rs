@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Manager, State};
 use thiserror::Error;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
@@ -595,13 +595,14 @@ pub async fn create_folder(
 pub async fn rebuild_index(state: State<'_, Mutex<AppState>>) -> Result<(), CommandError> {
     let mut s = state.lock().await;
     let vault = s.vault.as_ref().ok_or(CommandError::VaultNotOpen)?;
+    let vault_root = vault.root().to_path_buf();
     let indexer = s.indexer.as_mut().ok_or(CommandError::VaultNotOpen)?;
     indexer
         .rebuild(vault)
         .map_err(|e| CommandError::Indexer(e.to_string()))?;
 
     // Rebuild search from scratch.
-    let search_index_path = vault.root().join(".vault-index").join("search");
+    let search_index_path = vault_root.join(".vault-index").join("search");
     let mut search =
         SearchEngine::new(&search_index_path).map_err(|e| CommandError::Search(e.to_string()))?;
 
