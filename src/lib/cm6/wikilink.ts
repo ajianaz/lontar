@@ -1,4 +1,5 @@
-import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate } from '@codemirror/view';
+import { Decoration, EditorView, ViewPlugin, ViewUpdate } from '@codemirror/view';
+import type { DecorationSet } from '@codemirror/view';
 import { RangeSetBuilder } from '@codemirror/state';
 
 // Decoration for the wikilink text (target)

@@ -1,4 +1,4 @@
-import { vault as vaultApi } from '../ts/ipc';
+import { vault as vaultApi, indexer as indexerApi } from '../ts/ipc';
 import type { TreeEntry, NoteData, WatchEvent } from '../ts/types';
 
 // Vault state
@@ -60,7 +60,7 @@ async function selectNote(path: string) {
   try {
     const [content, data] = await Promise.all([
       vaultApi.readNote(path),
-      vaultApi.getNote(path),
+      indexerApi.getNote(path),
     ]);
     currentNoteContent = content;
     currentNoteData = data;
