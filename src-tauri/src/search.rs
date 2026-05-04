@@ -6,11 +6,11 @@ use std::path::{Path, PathBuf};
 
 use regex;
 use serde::Serialize;
+use tantivy::TantivyDocument;
 use tantivy::collector::TopDocs;
 use tantivy::directory::MmapDirectory;
 use tantivy::query::{QueryParser, RegexQuery};
 use tantivy::schema::{FAST, Field, STORED, STRING, Schema, TEXT};
-use tantivy::TantivyDocument;
 use tantivy::{DateTime, Index, IndexReader, IndexWriter, SnippetGenerator, Term};
 
 // ---------------------------------------------------------------------------

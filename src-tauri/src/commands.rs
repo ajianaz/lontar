@@ -433,7 +433,9 @@ pub async fn create_note(
     {
         let full_path = {
             let vault = s.vault.as_ref().ok_or(CommandError::VaultNotOpen)?;
-            vault.resolve_path(trimmed).map_err(|e| CommandError::Io(e.to_string()))?
+            vault
+                .resolve_path(trimmed)
+                .map_err(|e| CommandError::Io(e.to_string()))?
         };
         let indexer = s.indexer.as_mut().ok_or(CommandError::VaultNotOpen)?;
         indexer
@@ -469,7 +471,9 @@ pub async fn update_note(
     {
         let full_path = {
             let vault = s.vault.as_ref().ok_or(CommandError::VaultNotOpen)?;
-            vault.resolve_path(trimmed).map_err(|e| CommandError::Io(e.to_string()))?
+            vault
+                .resolve_path(trimmed)
+                .map_err(|e| CommandError::Io(e.to_string()))?
         };
         let indexer = s.indexer.as_mut().ok_or(CommandError::VaultNotOpen)?;
         indexer
@@ -549,7 +553,9 @@ pub async fn rename_note(
     {
         let full_path = {
             let vault = s.vault.as_ref().ok_or(CommandError::VaultNotOpen)?;
-            vault.resolve_path(new_trimmed).map_err(|e| CommandError::Io(e.to_string()))?
+            vault
+                .resolve_path(new_trimmed)
+                .map_err(|e| CommandError::Io(e.to_string()))?
         };
         let indexer = s.indexer.as_mut().ok_or(CommandError::VaultNotOpen)?;
         indexer
