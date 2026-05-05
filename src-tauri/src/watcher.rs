@@ -257,7 +257,13 @@ fn handle_notify_event(event: notify::Event, root: &Path, raw_tx: &mpsc::Sender<
     // Only interested in create / modify / remove / rename.
     let kind = match event.kind {
         EventKind::Create(_) => RawEventKind::Create,
+        // Linux/inotify: both paths available in one event → true rename.
         EventKind::Modify(ModifyKind::Name(RenameMode::Both)) => RawEventKind::Rename,
+        // Windows (ReadDirectoryChanges): separate From/To events.
+        EventKind::Modify(ModifyKind::Name(RenameMode::From)) => RawEventKind::Remove,
+        EventKind::Modify(ModifyKind::Name(RenameMode::To)) => RawEventKind::Create,
+        // macOS (FSEvents): single ambiguous path → safest as modify.
+        EventKind::Modify(ModifyKind::Name(RenameMode::Any)) => RawEventKind::Modify,
         EventKind::Modify(_) => RawEventKind::Modify,
         EventKind::Remove(_) => RawEventKind::Remove,
         _ => return,
