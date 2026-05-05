@@ -25,7 +25,7 @@
             if (vault.currentNotePath && vault.currentNoteContent) {
               import('../ts/ipc').then(({ vault: vaultApi }) => {
                 vaultApi.updateNote(vault.currentNotePath!, vault.currentNoteContent)
-                  .then(() => editor.markDirty()); // clear dirty after save
+                  .then(() => editor.markClean()); // clear dirty after save
               });
             }
           }

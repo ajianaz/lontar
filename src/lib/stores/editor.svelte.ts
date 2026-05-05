@@ -51,6 +51,12 @@ function markDirty() {
   }
 }
 
+function markClean() {
+  if (activeTab) {
+    tabs = tabs.map((t, i) => i === activeTabIndex ? { ...t, isDirty: false } : t);
+  }
+}
+
 function scheduleSave(content: string) {
   if (saveTimeout) clearTimeout(saveTimeout);
   if (!activeTab) return;
@@ -79,6 +85,7 @@ export function getEditorStore() {
     openTab,
     closeTab,
     markDirty,
+    markClean,
     scheduleSave,
     flushSave,
     setActiveTabIndex(i: number) { activeTabIndex = i; },
