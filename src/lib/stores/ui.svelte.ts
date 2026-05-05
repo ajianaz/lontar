@@ -4,6 +4,7 @@ import {
 } from '../ts/constants';
 
 export type SidePanelTab = 'outline' | 'backlinks' | 'tags';
+export type ViewMode = 'edit' | 'preview' | 'split';
 
 let sidebarWidth = $state(SIDEBAR_DEFAULT_WIDTH);
 let sidePanelWidth = $state(SIDE_PANEL_DEFAULT_WIDTH);
@@ -11,6 +12,7 @@ let sidebarVisible = $state(true);
 let sidePanelVisible = $state(false);
 let sidePanelTab = $state<SidePanelTab>('backlinks');
 let commandPaletteOpen = $state(false);
+let viewMode = $state<ViewMode>('edit');
 
 export function getUiStore() {
   return {
@@ -26,5 +28,15 @@ export function getUiStore() {
     toggleSidePanel() { sidePanelVisible = !sidePanelVisible; },
     setSidePanelTab(tab: SidePanelTab) { sidePanelTab = tab; sidePanelVisible = true; },
     setCommandPaletteOpen(v: boolean) { commandPaletteOpen = v; },
+    get viewMode() { return viewMode; },
+    setViewMode(mode: ViewMode) { viewMode = mode; },
+    toggleViewMode() {
+      viewMode = viewMode === 'edit' ? 'preview' : viewMode === 'preview' ? 'split' : 'edit';
+    },
+    cycleViewMode() {
+      const modes: ViewMode[] = ['edit', 'split', 'preview'];
+      const idx = modes.indexOf(viewMode);
+      viewMode = modes[(idx + 1) % modes.length];
+    },
   };
 }

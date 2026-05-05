@@ -12,6 +12,8 @@
   import EditorPane from './lib/components/EditorPane.svelte';
   import SidePanel from './lib/components/SidePanel.svelte';
   import StatusBar from './lib/components/StatusBar.svelte';
+  import PreviewPane from './lib/components/PreviewPane.svelte';
+  import ViewModeToggle from './lib/components/ViewModeToggle.svelte';
 
   const vault = getVaultStore();
   const editor = getEditorStore();
@@ -44,9 +46,14 @@
         // TODO: trigger new note flow via command palette
       }
       // Ctrl+P: command palette
-      if (e.key === 'p' && (e.ctrlKey || e.metaKey)) {
+      if (e.key === 'p' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
         e.preventDefault();
         ui.setCommandPaletteOpen(!ui.commandPaletteOpen);
+      }
+      // Ctrl+Shift+E: cycle view mode
+      if (e.key === 'E' && (e.ctrlKey || e.metaKey) && e.shiftKey) {
+        e.preventDefault();
+        ui.cycleViewMode();
       }
     };
 
@@ -80,9 +87,24 @@
       <div class="editor-area">
         <TabBar />
         {#if editor.activeTab}
+          <div class="editor-toolbar">
+            <ViewModeToggle />
+          </div>
           <div class="editor-container">
-            <EditorPane />
-            <SidePanel />
+            {#if ui.viewMode === 'edit'}
+              <div class="editor-pane-wrap"><EditorPane /></div>
+              <SidePanel />
+            {:else if ui.viewMode === 'preview'}
+              <div class="preview-pane-wrap"><PreviewPane /></div>
+              <SidePanel />
+            {:else}
+              <div class="split-editor">
+                <div class="split-left"><EditorPane /></div>
+                <div class="split-divider"></div>
+                <div class="split-right"><PreviewPane /></div>
+              </div>
+              <SidePanel />
+            {/if}
           </div>
         {:else}
           <div class="empty-state">
@@ -126,10 +148,42 @@
     overflow: hidden;
     min-width: 0;
   }
+  .editor-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-secondary);
+    flex-shrink: 0;
+  }
   .editor-container {
     flex: 1;
     display: flex;
     overflow: hidden;
+  }
+  .editor-pane-wrap,
+  .preview-pane-wrap {
+    flex: 1;
+    overflow: hidden;
+    min-width: 0;
+  }
+  .split-editor {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    min-width: 0;
+  }
+  .split-left,
+  .split-right {
+    flex: 1;
+    overflow: hidden;
+    min-width: 0;
+  }
+  .split-divider {
+    width: 1px;
+    background: var(--border);
+    flex-shrink: 0;
   }
   .welcome-screen {
     flex: 1;
