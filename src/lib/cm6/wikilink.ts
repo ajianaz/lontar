@@ -51,13 +51,7 @@ function buildDecorations(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   const doc = view.state.doc.toString();
 
-  const regex = /\[\[([^\]]+?)\]\]/g;
-  let match: RegExpExecArray | null;
-
-  while ((match = regex.exec(doc)) !== null) {
-    const start = match.index;
-    const end = start + match[0].length;
-
+  for (const { start, end } of findWikilinks(doc)) {
     // Opening bracket
     builder.add(start, start + 2, bracketDecoration);
     // Link text decoration (accent color)

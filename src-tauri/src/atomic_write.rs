@@ -30,33 +30,20 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> io::Result<()> {
 
     // Unique temp file per write attempt — avoids race conditions.
     let prefix = format!(".{}.tmp-", file_name.to_string_lossy());
-    let tmp_file = tempfile::Builder::new()
+    let mut tmp_file = tempfile::Builder::new()
         .prefix(&prefix)
         .suffix(".tmp")
         .tempfile_in(parent)?;
-    let tmp_path = tmp_file.path().to_path_buf();
 
-    // Write data, fsync for durability.
-    let result = (|| {
-        // Use the pre-created temp file from tempfile::Builder.
-        let mut file = File::create(&tmp_path)?;
-        file.write_all(data)?;
-        file.sync_all()?;
-        Ok(())
-    })();
+    // Write data + fsync for durability. NamedTempFile auto-cleans on drop
+    // if any of these fail (no manual remove_file needed).
+    tmp_file.write_all(data)?;
+    tmp_file.as_file().sync_all()?;
 
-    if let Err(e) = result {
-        // tempfile::NamedTempFile auto-cleans on drop, but be explicit.
-        let _ = std::fs::remove_file(&tmp_path);
-        return Err(e);
-    }
-
-    // Atomic rename (POSIX). On failure, original file is intact.
-    // Clean up tmp on rename failure.
-    if let Err(e) = std::fs::rename(&tmp_path, path) {
-        let _ = std::fs::remove_file(&tmp_path);
-        return Err(e);
-    }
+    // Atomic rename (POSIX). On failure, original file is intact and the
+    // returned PersistError carries the NamedTempFile back so it can still
+    // auto-clean.
+    tmp_file.persist(path).map_err(|e| e.error)?;
 
     // Fsync the parent directory to persist the directory entry (POSIX).
     if let Ok(dir) = File::open(parent) {
