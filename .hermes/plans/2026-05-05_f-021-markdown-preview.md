@@ -22,7 +22,7 @@ Add markdown live preview to the editor — user can toggle between edit-only, p
 - **Parser:** `marked` — fast, small, extensible, supports GFM
 - **Highlighting:** Code blocks get basic syntax highlighting via `marked-highlight` + `highlight.js` (optional, later)
 - **Wikilinks:** Custom renderer to convert `[[link]]` to clickable spans
-- **No Sanitization needed:** Local-only app, no XSS risk (no external content)
+- **Sanitization:** DOMPurify applied to rendered HTML (defense-in-depth against malformed markdown)
 - **Style:** Reuse CSS variables from `app.css`, add markdown-specific styles
 
 ## View Modes

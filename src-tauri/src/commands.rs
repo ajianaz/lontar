@@ -3,6 +3,7 @@
 //! Every command is an `async fn` decorated with `#[tauri::command]`.
 //! State is held in [`AppState`] behind `tokio::sync::Mutex`.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -850,35 +851,7 @@ pub async fn start_watcher(state: State<'_, Arc<Mutex<AppState>>>) -> Result<(),
                 event = rx.recv() => {
                     match event {
                         Some(event) => {
-                            let payload = match &event {
-                                crate::watcher::WatchEvent::Created(p) => {
-                                    let rel = strip_vault_prefix(p, &vault_root);
-                                    WatchEventPayload::Created { path: rel }
-                                }
-                                crate::watcher::WatchEvent::Modified(p) => {
-                                    let rel = strip_vault_prefix(p, &vault_root);
-                                    WatchEventPayload::Modified { path: rel }
-                                }
-                                crate::watcher::WatchEvent::Removed(p) => {
-                                    let rel = strip_vault_prefix(p, &vault_root);
-                                    WatchEventPayload::Removed { path: rel }
-                                }
-                                crate::watcher::WatchEvent::Rename { old, new } => {
-                                    let rel_old = strip_vault_prefix(old, &vault_root);
-                                    let rel_new = strip_vault_prefix(new, &vault_root);
-                                    let _ = app_handle.emit(
-                                        "vault-change",
-                                        WatchEventPayload::Removed { path: rel_old },
-                                    );
-                                    WatchEventPayload::Created { path: rel_new }
-                                }
-                                crate::watcher::WatchEvent::BulkChange { count } => {
-                                    WatchEventPayload::BulkChange { count }
-                                }
-                            };
-                            let _ = app_handle.emit("vault-change", payload);
-
-                            // Update backend indexer + search for .md files.
+                            // --- Phase 1: Update backend (indexer + search) ---
                             match &event {
                                 crate::watcher::WatchEvent::Created(p)
                                 | crate::watcher::WatchEvent::Modified(p) => {
@@ -945,6 +918,15 @@ pub async fn start_watcher(state: State<'_, Arc<Mutex<AppState>>>) -> Result<(),
                                         Some(v) => v.root().to_path_buf(),
                                         None => continue,
                                     };
+
+                                    // Snapshot old indexed paths before rebuild so we can
+                                    // purge stale search entries for externally deleted notes.
+                                    let old_paths: HashSet<String> = s
+                                        .indexer
+                                        .as_ref()
+                                        .map(|idx| idx.index().notes.keys().cloned().collect())
+                                        .unwrap_or_default();
+
                                     if let Some(indexer) = s.indexer.as_mut() {
                                         let _ = indexer.rebuild(&root);
                                     }
@@ -955,9 +937,14 @@ pub async fn start_watcher(state: State<'_, Arc<Mutex<AppState>>>) -> Result<(),
                                         s.search.as_mut(),
                                     ) {
                                         let idx = indexer.index();
-                                        // Delete every existing note from search first.
-                                        for rel in idx.notes.keys() {
-                                            let _ = search.delete_note(rel);
+                                        let new_paths: HashSet<&String> =
+                                            idx.notes.keys().collect();
+
+                                        // Remove stale search entries for notes no longer in index.
+                                        for old_path in &old_paths {
+                                            if !new_paths.contains(old_path) {
+                                                let _ = search.delete_note(old_path);
+                                            }
                                         }
                                         // Re-index all notes into search.
                                         for (rel, note) in &idx.notes {
@@ -975,6 +962,37 @@ pub async fn start_watcher(state: State<'_, Arc<Mutex<AppState>>>) -> Result<(),
                                         }
                                         let _ = search.commit();
                                     }
+                                }
+                            }
+
+                            // --- Phase 2: Emit frontend events AFTER backend is in sync ---
+                            match &event {
+                                crate::watcher::WatchEvent::Created(p) => {
+                                    let rel = strip_vault_prefix(p, &vault_root);
+                                    let _ = app_handle.emit("vault-change", WatchEventPayload::Created { path: rel });
+                                }
+                                crate::watcher::WatchEvent::Modified(p) => {
+                                    let rel = strip_vault_prefix(p, &vault_root);
+                                    let _ = app_handle.emit("vault-change", WatchEventPayload::Modified { path: rel });
+                                }
+                                crate::watcher::WatchEvent::Removed(p) => {
+                                    let rel = strip_vault_prefix(p, &vault_root);
+                                    let _ = app_handle.emit("vault-change", WatchEventPayload::Removed { path: rel });
+                                }
+                                crate::watcher::WatchEvent::Rename { old, new } => {
+                                    let rel_old = strip_vault_prefix(old, &vault_root);
+                                    let rel_new = strip_vault_prefix(new, &vault_root);
+                                    let _ = app_handle.emit(
+                                        "vault-change",
+                                        WatchEventPayload::Removed { path: rel_old },
+                                    );
+                                    let _ = app_handle.emit(
+                                        "vault-change",
+                                        WatchEventPayload::Created { path: rel_new },
+                                    );
+                                }
+                                crate::watcher::WatchEvent::BulkChange { count } => {
+                                    let _ = app_handle.emit("vault-change", WatchEventPayload::BulkChange { count });
                                 }
                             }
                         }

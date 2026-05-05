@@ -76,6 +76,7 @@ enum RawEvent {
     Created(PathBuf),
     Modified(PathBuf),
     Removed(PathBuf),
+    Renamed { old: PathBuf, new: PathBuf },
 }
 
 /// Minimal kind tag to avoid re-matching on the full `notify::EventKind`.
@@ -83,6 +84,7 @@ enum RawEventKind {
     Create,
     Modify,
     Remove,
+    Rename,
 }
 
 // ---------------------------------------------------------------------------
@@ -248,14 +250,47 @@ impl Drop for VaultWatcher {
 /// relevant events to the debounce task via `raw_tx`.
 fn handle_notify_event(event: notify::Event, root: &Path, raw_tx: &mpsc::Sender<RawEvent>) {
     use notify::EventKind;
+    use notify::event::ModifyKind;
+    use notify::event::RenameMode;
 
-    // Only interested in create / modify / remove.
+    // Only interested in create / modify / remove / rename.
     let kind = match event.kind {
         EventKind::Create(_) => RawEventKind::Create,
+        EventKind::Modify(ModifyKind::Name(RenameMode::Both)) => RawEventKind::Rename,
         EventKind::Modify(_) => RawEventKind::Modify,
         EventKind::Remove(_) => RawEventKind::Remove,
         _ => return,
     };
+
+    // For rename events, notify provides two paths: [old, new].
+    // Extract them together and send as a single Renamed event.
+    if kind == RawEventKind::Rename && event.paths.len() >= 2 {
+        let old_path = event.paths[0].clone();
+        let new_path = event.paths[1].clone();
+
+        // Apply the same root/hidden/md filters to both paths
+        if old_path.starts_with(root)
+            && new_path.starts_with(root)
+            && !old_path
+                .components()
+                .any(|c| c.as_os_str().to_string_lossy().starts_with('.'))
+            && !new_path
+                .components()
+                .any(|c| c.as_os_str().to_string_lossy().starts_with('.'))
+            && (old_path
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
+                || new_path
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("md")))
+        {
+            let _ = raw_tx.try_send(RawEvent::Renamed {
+                old: old_path,
+                new: new_path,
+            });
+        }
+        return; // Don't fall through to per-path processing
+    }
 
     for path in event.paths {
         // Skip paths outside the vault root.
@@ -284,6 +319,7 @@ fn handle_notify_event(event: notify::Event, root: &Path, raw_tx: &mpsc::Sender<
             RawEventKind::Create => RawEvent::Created(path),
             RawEventKind::Modify => RawEvent::Modified(path),
             RawEventKind::Remove => RawEvent::Removed(path),
+            RawEventKind::Rename => unreachable!("handled above"),
         };
 
         let _ = raw_tx.try_send(raw);
@@ -353,14 +389,16 @@ async fn debounce_loop(
 fn insert_coalesced(map: &mut HashMap<PathBuf, RawEvent>, event: RawEvent) {
     let path = match &event {
         RawEvent::Created(p) | RawEvent::Modified(p) | RawEvent::Removed(p) => p.clone(),
+        RawEvent::Renamed { old, .. } => old.clone(),
     };
 
     map.entry(path)
         .and_modify(|existing| {
             use RawEvent::*;
             match (&*existing, &event) {
-                (Created(_), Modified(_)) => {}      // Created wins
-                (Modified(_), Modified(_)) => {}     // dedup
+                (Created(_), Modified(_)) => {}  // Created wins
+                (Modified(_), Modified(_)) => {} // dedup
+                (Renamed { .. }, _) | (_, Renamed { .. }) => *existing = event.clone(), // rename replaces anything
                 (_, _) => *existing = event.clone(), // new type replaces
             }
         })
@@ -388,6 +426,10 @@ fn flush_pending(pending: &HashMap<PathBuf, RawEvent>, tx: &mpsc::Sender<WatchEv
             RawEvent::Created(p) => WatchEvent::Created(p.clone()),
             RawEvent::Modified(p) => WatchEvent::Modified(p.clone()),
             RawEvent::Removed(p) => WatchEvent::Removed(p.clone()),
+            RawEvent::Renamed { old, new } => WatchEvent::Rename {
+                old: old.clone(),
+                new: new.clone(),
+            },
         };
         let _ = tx.try_send(event);
     }
