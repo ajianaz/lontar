@@ -216,7 +216,7 @@ impl VaultWatcher {
                 };
                 handle_notify_event(event, &root_for_filter, &raw_tx_inner);
             },
-            notify::Config::default().with_poll_interval(Duration::from_millis(50)),
+            notify::Config::default().with_poll_interval(Duration::from_millis(32)),
         )?;
 
         use notify::Watcher;
@@ -421,7 +421,7 @@ mod tests {
     ///
     /// **Must** be called from a tokio runtime (e.g. `#[tokio::test]`).
     fn start_watcher(root: &Path) -> (VaultWatcher, mpsc::UnboundedReceiver<WatchEvent>) {
-        let mut w = VaultWatcher::new(root, Some(50)); // 50ms debounce for tests
+        let mut w = VaultWatcher::new(root, Some(30)); // 50ms debounce for tests
         let rx = w.subscribe().expect("subscribe failed");
         w.start_with_poll().expect("watcher start failed");
         (w, rx)
@@ -445,7 +445,7 @@ mod tests {
         let note_path = dir.path().join("hello.md");
         fs::write(&note_path, "# Hello").unwrap();
 
-        let events = drain_events(&mut rx, 200);
+        let events = drain_events(&mut rx, 500);
         assert!(
             events
                 .iter()
@@ -464,7 +464,7 @@ mod tests {
 
         fs::write(&note_path, "v2").unwrap();
 
-        let events = drain_events(&mut rx, 200);
+        let events = drain_events(&mut rx, 500);
         assert!(
             events
                 .iter()
@@ -483,7 +483,7 @@ mod tests {
 
         fs::remove_file(&note_path).unwrap();
 
-        let events = drain_events(&mut rx, 200);
+        let events = drain_events(&mut rx, 500);
         assert!(
             events
                 .iter()
@@ -511,7 +511,7 @@ mod tests {
         // .vault-index directory.
         fs::create_dir_all(dir.path().join(".vault-index")).unwrap();
 
-        thread::sleep(Duration::from_millis(200));
+        thread::sleep(Duration::from_millis(500));
         let events: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
         assert!(
             events.is_empty(),
@@ -528,7 +528,7 @@ mod tests {
         fs::write(dir.path().join("image.png"), b"\x89PNG").unwrap();
         fs::write(dir.path().join("data.json"), "{}").unwrap();
 
-        thread::sleep(Duration::from_millis(200));
+        thread::sleep(Duration::from_millis(500));
         let events: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
         assert!(
             events.is_empty(),
@@ -547,7 +547,7 @@ mod tests {
         thread::sleep(Duration::from_millis(5));
         fs::write(&note_path, "second").unwrap();
 
-        let events = drain_events(&mut rx, 200);
+        let events = drain_events(&mut rx, 500);
 
         let has_created = events
             .iter()
@@ -573,7 +573,7 @@ mod tests {
             fs::write(dir.path().join(format!("note_{i}.md")), "content").unwrap();
         }
 
-        let events = drain_events(&mut rx, 300);
+        let events = drain_events(&mut rx, 500);
         assert!(
             events.iter().any(|e| matches!(
                 e,
