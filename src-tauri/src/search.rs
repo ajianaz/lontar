@@ -8,7 +8,7 @@ use serde::Serialize;
 use tantivy::TantivyDocument;
 use tantivy::collector::TopDocs;
 use tantivy::directory::MmapDirectory;
-use tantivy::query::{QueryParser, TermPrefixQuery};
+use tantivy::query::{FuzzyTermQuery, QueryParser};
 use tantivy::schema::{FAST, Field, STORED, STRING, Schema, TEXT};
 use tantivy::{DateTime, Index, IndexReader, IndexWriter, SnippetGenerator, Term};
 
@@ -323,7 +323,7 @@ impl SearchEngine {
         let searcher = self.reader.searcher();
 
         let prefix_term = tantivy::Term::from_field_text(self.title_field, prefix);
-        let query = TermPrefixQuery::new(prefix_term);
+        let query = FuzzyTermQuery::new(prefix_term, 2, true);
 
         let top_docs = searcher.search(&query, &TopDocs::with_limit(limit))?;
 

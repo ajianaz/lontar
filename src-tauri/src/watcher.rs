@@ -109,7 +109,7 @@ pub struct VaultWatcher {
     tx: mpsc::UnboundedSender<WatchEvent>,
     /// Receiver half, handed out once via [`subscribe`](Self::subscribe).
     rx: Option<mpsc::UnboundedReceiver<WatchEvent>>,
-    _watcher: Option<Box<dyn notify::Watcher>>,
+    _watcher: Option<Box<dyn notify::Watcher + Send + Sync>>,
     debounce_task: Option<JoinHandle<()>>,
     debounce_ms: u64,
 }
