@@ -13,6 +13,7 @@ let sidePanelVisible = $state(false);
 let sidePanelTab = $state<SidePanelTab>('backlinks');
 let commandPaletteOpen = $state(false);
 let viewMode = $state<ViewMode>('edit');
+let graphViewVisible = $state(false);
 
 export function getUiStore() {
   return {
@@ -38,5 +39,8 @@ export function getUiStore() {
       const idx = modes.indexOf(viewMode);
       viewMode = modes[(idx + 1) % modes.length];
     },
+    get graphViewVisible() { return graphViewVisible; },
+    toggleGraphView() { graphViewVisible = !graphViewVisible; },
+    setGraphViewVisible(v: boolean) { graphViewVisible = v; },
   };
 }

@@ -14,6 +14,7 @@
   import StatusBar from './lib/components/StatusBar.svelte';
   import PreviewPane from './lib/components/PreviewPane.svelte';
   import ViewModeToggle from './lib/components/ViewModeToggle.svelte';
+  import GraphView from './lib/components/GraphView.svelte';
 
   const vault = getVaultStore();
   const editor = getEditorStore();
@@ -55,6 +56,11 @@
         e.preventDefault();
         ui.cycleViewMode();
       }
+      // Ctrl+G: toggle graph view
+      if (e.key === 'g' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+        e.preventDefault();
+        ui.toggleGraphView();
+      }
     };
 
     document.addEventListener('keydown', handleGlobalKeydown);
@@ -85,6 +91,9 @@
     <div class="main-layout">
       <Sidebar />
       <div class="editor-area">
+        {#if ui.graphViewVisible}
+          <GraphView />
+        {/if}
         <TabBar />
         {#if editor.activeTab}
           <div class="editor-toolbar">
