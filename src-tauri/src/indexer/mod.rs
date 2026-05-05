@@ -14,7 +14,7 @@ use std::sync::LazyLock;
 
 static RE_WIKILINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[([^\]]+?)\]\]").unwrap());
 static RE_INLINE_TAG: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?<!\w)#[A-Za-z][\w/-]*").unwrap());
+    LazyLock::new(|| Regex::new(r"(?:^|[^\w])#([A-Za-z][\w/-]*)").unwrap());
 static RE_HEADING: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^(#{1,6})\s+(.+)$").unwrap());
 use serde::Serialize;
@@ -650,7 +650,7 @@ fn parse_inline_tags(body: &str) -> Vec<String> {
     let without_code = strip_code_blocks(body);
     let re = &*RE_INLINE_TAG;
     re.captures_iter(&without_code)
-        .map(|cap| cap[0][1..].to_string())
+        .map(|cap| cap[1].to_string())
         .collect()
 }
 
