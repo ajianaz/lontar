@@ -22,7 +22,6 @@
 </script>
 
 <script lang="ts">
-  import { marked } from 'marked';
   import DOMPurify from 'dompurify';
   import { getVaultStore } from '../stores/vault.svelte';
 
