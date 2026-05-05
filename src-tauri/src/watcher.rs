@@ -80,6 +80,7 @@ enum RawEvent {
 }
 
 /// Minimal kind tag to avoid re-matching on the full `notify::EventKind`.
+#[derive(PartialEq)]
 enum RawEventKind {
     Create,
     Modify,

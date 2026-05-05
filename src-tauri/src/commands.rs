@@ -992,7 +992,7 @@ pub async fn start_watcher(state: State<'_, Arc<Mutex<AppState>>>) -> Result<(),
                                     );
                                 }
                                 crate::watcher::WatchEvent::BulkChange { count } => {
-                                    let _ = app_handle.emit("vault-change", WatchEventPayload::BulkChange { count });
+                                    let _ = app_handle.emit("vault-change", WatchEventPayload::BulkChange { count: *count });
                                 }
                             }
                         }
