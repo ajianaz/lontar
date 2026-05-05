@@ -931,14 +931,17 @@ pub async fn start_watcher(state: State<'_, Arc<Mutex<AppState>>>) -> Result<(),
                                         let _ = indexer.rebuild(&root);
                                     }
                                     // Rebuild search from the refreshed indexer.
-                                    if let (Some(vault), Some(indexer), Some(search)) = (
-                                        s.vault.as_ref(),
-                                        s.indexer.as_ref(),
-                                        s.search.as_mut(),
-                                    ) {
-                                        let idx = indexer.index();
-                                        let new_paths: HashSet<&String> =
-                                            idx.notes.keys().collect();
+                                    // Split borrows: collect immutable data first, then mutably borrow search.
+                                    let vault_snap = s.vault.as_ref().map(|v| v.root().to_path_buf());
+                                    let idx_snap = s.indexer.as_ref().map(|idx| {
+                                        (idx.index().notes.keys().cloned().collect::<HashSet<_>>(),
+                                         idx.index().notes.clone())
+                                    });
+                                    if let (Some(vault_path), Some((_, idx_notes)), Some(search)) =
+                                        (vault_snap, idx_snap, s.search.as_mut())
+                                    {
+                                        let new_paths: HashSet<&String> = idx_notes.notes.keys().collect();
+                                        let vault = crate::vault::VaultManager::new(&vault_path);
 
                                         // Remove stale search entries for notes no longer in index.
                                         for old_path in &old_paths {
@@ -947,7 +950,7 @@ pub async fn start_watcher(state: State<'_, Arc<Mutex<AppState>>>) -> Result<(),
                                             }
                                         }
                                         // Re-index all notes into search.
-                                        for (rel, note) in &idx.notes {
+                                        for (rel, note) in &idx_notes.notes {
                                             if let Ok(body) = vault.read_note(rel) {
                                                 let mod_dt = tantivy::DateTime::from_timestamp_micros(
                                                     parse_iso_to_micros(note.modified.as_deref().unwrap_or("")),
