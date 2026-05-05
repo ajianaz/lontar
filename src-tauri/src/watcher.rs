@@ -106,9 +106,9 @@ enum RawEventKind {
 pub struct VaultWatcher {
     root: PathBuf,
     /// Sender half of the output channel. Shared with the debounce task.
-    tx: mpsc::UnboundedSender<WatchEvent>,
+    tx: mpsc::Sender<WatchEvent>,
     /// Receiver half, handed out once via [`subscribe`](Self::subscribe).
-    rx: Option<mpsc::UnboundedReceiver<WatchEvent>>,
+    rx: Option<mpsc::Receiver<WatchEvent>>,
     _watcher: Option<Box<dyn notify::Watcher + Send + Sync>>,
     debounce_task: Option<JoinHandle<()>>,
     debounce_ms: u64,
@@ -123,7 +123,7 @@ impl VaultWatcher {
     /// Call [`subscribe`](Self::subscribe) to get the receiver, then
     /// [`start`](Self::start) to begin emitting events.
     pub fn new(root: impl Into<PathBuf>, debounce_ms: Option<u64>) -> Self {
-        let (tx, rx) = mpsc::unbounded_channel();
+        let (tx, rx) = mpsc::channel(256);
         Self {
             root: root.into(),
             tx,
@@ -142,7 +142,7 @@ impl VaultWatcher {
     /// Get the event receiver. Can only be called once.
     ///
     /// Returns `None` if already called (receiver was taken).
-    pub fn subscribe(&mut self) -> Option<mpsc::UnboundedReceiver<WatchEvent>> {
+    pub fn subscribe(&mut self) -> Option<mpsc::Receiver<WatchEvent>> {
         self.rx.take()
     }
 
@@ -155,7 +155,7 @@ impl VaultWatcher {
     /// consume events. Events emitted before a receiver exists are dropped.
     pub fn start(&mut self) -> Result<(), VaultWatcherError> {
         // 1. Internal channel: notify thread → debounce task.
-        let (raw_tx, raw_rx) = mpsc::unbounded_channel::<RawEvent>();
+        let (raw_tx, raw_rx) = mpsc::channel::<RawEvent>(1024);
 
         // 2. Spawn the debounce task. It receives raw events and writes
         //    deduplicated/coalesced WatchEvents to self.tx.
@@ -196,7 +196,7 @@ impl VaultWatcher {
     pub fn start_with_poll(&mut self) -> Result<(), VaultWatcherError> {
         use notify::PollWatcher;
 
-        let (raw_tx, raw_rx) = mpsc::unbounded_channel::<RawEvent>();
+        let (raw_tx, raw_rx) = mpsc::channel::<RawEvent>(1024);
         let out_tx = self.tx.clone();
         let debounce_ms = self.debounce_ms;
         let debounce_handle = tokio::spawn(async move {
@@ -246,11 +246,7 @@ impl Drop for VaultWatcher {
 
 /// Process a raw notify event: filter hidden/non-markdown paths, forward
 /// relevant events to the debounce task via `raw_tx`.
-fn handle_notify_event(
-    event: notify::Event,
-    root: &Path,
-    raw_tx: &mpsc::UnboundedSender<RawEvent>,
-) {
+fn handle_notify_event(event: notify::Event, root: &Path, raw_tx: &mpsc::Sender<RawEvent>) {
     use notify::EventKind;
 
     // Only interested in create / modify / remove.
@@ -290,7 +286,7 @@ fn handle_notify_event(
             RawEventKind::Remove => RawEvent::Removed(path),
         };
 
-        let _ = raw_tx.send(raw);
+        let _ = raw_tx.try_send(raw);
     }
 }
 
@@ -307,8 +303,8 @@ fn handle_notify_event(
 /// 3. Collect all events arriving before the timer expires.
 /// 4. Flush: if >10 unique paths → emit `BulkChange`, else emit individually.
 async fn debounce_loop(
-    mut rx: mpsc::UnboundedReceiver<RawEvent>,
-    tx: mpsc::UnboundedSender<WatchEvent>,
+    mut rx: mpsc::Receiver<RawEvent>,
+    tx: mpsc::Sender<WatchEvent>,
     debounce_ms: u64,
 ) {
     let mut pending: HashMap<PathBuf, RawEvent> = HashMap::new();
@@ -375,13 +371,13 @@ fn insert_coalesced(map: &mut HashMap<PathBuf, RawEvent>, event: RawEvent) {
 ///
 /// If more than 10 unique paths were modified in this debounce window,
 /// emit a single [`WatchEvent::BulkChange`] instead of individual events.
-fn flush_pending(pending: &HashMap<PathBuf, RawEvent>, tx: &mpsc::UnboundedSender<WatchEvent>) {
+fn flush_pending(pending: &HashMap<PathBuf, RawEvent>, tx: &mpsc::Sender<WatchEvent>) {
     if pending.is_empty() {
         return;
     }
 
     if pending.len() > 10 {
-        let _ = tx.send(WatchEvent::BulkChange {
+        let _ = tx.try_send(WatchEvent::BulkChange {
             count: pending.len(),
         });
         return;
@@ -393,7 +389,7 @@ fn flush_pending(pending: &HashMap<PathBuf, RawEvent>, tx: &mpsc::UnboundedSende
             RawEvent::Modified(p) => WatchEvent::Modified(p.clone()),
             RawEvent::Removed(p) => WatchEvent::Removed(p.clone()),
         };
-        let _ = tx.send(event);
+        let _ = tx.try_send(event);
     }
 }
 
@@ -427,7 +423,7 @@ mod tests {
     /// Returns both the watcher (keeps it alive) and the receiver.
     ///
     /// **Must** be called from a tokio runtime (e.g. `#[tokio::test]`).
-    fn start_watcher(root: &Path) -> (VaultWatcher, mpsc::UnboundedReceiver<WatchEvent>) {
+    fn start_watcher(root: &Path) -> (VaultWatcher, mpsc::Receiver<WatchEvent>) {
         let mut w = VaultWatcher::new(root, Some(30)); // 50ms debounce for tests
         let rx = w.subscribe().expect("subscribe failed");
         w.start_with_poll().expect("watcher start failed");
@@ -435,7 +431,7 @@ mod tests {
     }
 
     /// Drain all pending events after waiting `wait_ms`.
-    fn drain_events(rx: &mut mpsc::UnboundedReceiver<WatchEvent>, wait_ms: u64) -> Vec<WatchEvent> {
+    fn drain_events(rx: &mut mpsc::Receiver<WatchEvent>, wait_ms: u64) -> Vec<WatchEvent> {
         thread::sleep(Duration::from_millis(wait_ms));
         let mut events = Vec::new();
         while let Ok(e) = rx.try_recv() {

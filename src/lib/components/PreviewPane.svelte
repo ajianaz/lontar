@@ -1,5 +1,6 @@
 <script lang="ts">
   import { marked } from 'marked';
+  import DOMPurify from 'dompurify';
   import { getVaultStore } from '../stores/vault.svelte';
 
   const vault = getVaultStore();
@@ -20,7 +21,8 @@
         return undefined;
       },
       renderer(token: { text: string }) {
-        return `<span class="wikilink">${token.text}</span>`;
+        const esc = (s: string) => s.replace(/[&<>"']/g, (c: string) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])!);
+        return `<span class="wikilink">${esc(token.text)}</span>`;
       },
     };
     marked.use({ extensions: [wikilinkExt as any] });
@@ -29,7 +31,7 @@
 
   // marked() is sync when no async extensions are used
   let rendered = $derived(vault.currentNoteContent
-    ? marked.parse(vault.currentNoteContent) as string
+    ? DOMPurify.sanitize(marked.parse(vault.currentNoteContent) as string)
     : ''
   );
 </script>

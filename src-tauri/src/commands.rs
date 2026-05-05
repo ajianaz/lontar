@@ -4,6 +4,7 @@
 //! State is held in [`AppState`] behind `tokio::sync::Mutex`.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
@@ -302,7 +303,7 @@ fn days_from_civil(y: i32, m: u32, d: u32) -> i64 {
 #[tauri::command]
 pub async fn open_vault(
     app_handle: AppHandle<tauri::Wry>,
-    state: State<'_, Mutex<AppState>>,
+    state: State<'_, Arc<Mutex<AppState>>>,
     path: String,
 ) -> Result<String, CommandError> {
     let vault_path = sanitize_path(&path)?;
@@ -358,7 +359,7 @@ pub async fn open_vault(
 
 /// Close the current vault, releasing all state and stopping the watcher.
 #[tauri::command]
-pub async fn close_vault(state: State<'_, Mutex<AppState>>) -> Result<(), CommandError> {
+pub async fn close_vault(state: State<'_, Arc<Mutex<AppState>>>) -> Result<(), CommandError> {
     let mut s = state.lock().await;
     if let Some(ref mut w) = s.watcher {
         w.stop();
@@ -373,7 +374,9 @@ pub async fn close_vault(state: State<'_, Mutex<AppState>>) -> Result<(), Comman
 
 /// Return the directory tree of the vault.
 #[tauri::command]
-pub async fn get_tree(state: State<'_, Mutex<AppState>>) -> Result<TreeEntryJson, CommandError> {
+pub async fn get_tree(
+    state: State<'_, Arc<Mutex<AppState>>>,
+) -> Result<TreeEntryJson, CommandError> {
     let s = state.lock().await;
     let vault = s.vault.as_ref().ok_or(CommandError::VaultNotOpen)?;
     let tree = vault
@@ -385,7 +388,7 @@ pub async fn get_tree(state: State<'_, Mutex<AppState>>) -> Result<TreeEntryJson
 /// Read the content of a note at the given relative path.
 #[tauri::command]
 pub async fn read_note(
-    state: State<'_, Mutex<AppState>>,
+    state: State<'_, Arc<Mutex<AppState>>>,
     path: String,
 ) -> Result<String, CommandError> {
     let trimmed = path.trim();
@@ -402,7 +405,7 @@ pub async fn read_note(
 /// Create a new note with the given content, then index it.
 #[tauri::command]
 pub async fn create_note(
-    state: State<'_, Mutex<AppState>>,
+    state: State<'_, Arc<Mutex<AppState>>>,
     path: String,
     content: String,
 ) -> Result<String, CommandError> {
@@ -439,7 +442,7 @@ pub async fn create_note(
 /// Update an existing note with new content, then re-index.
 #[tauri::command]
 pub async fn update_note(
-    state: State<'_, Mutex<AppState>>,
+    state: State<'_, Arc<Mutex<AppState>>>,
     path: String,
     content: String,
 ) -> Result<String, CommandError> {
@@ -477,7 +480,7 @@ pub async fn update_note(
 /// Delete a note and remove it from both the index and search engine.
 #[tauri::command]
 pub async fn delete_note(
-    state: State<'_, Mutex<AppState>>,
+    state: State<'_, Arc<Mutex<AppState>>>,
     path: String,
 ) -> Result<String, CommandError> {
     let trimmed = path.trim();
@@ -507,7 +510,7 @@ pub async fn delete_note(
 /// Rename a note, re-indexing both the old and new paths.
 #[tauri::command]
 pub async fn rename_note(
-    state: State<'_, Mutex<AppState>>,
+    state: State<'_, Arc<Mutex<AppState>>>,
     old_path: String,
     new_path: String,
 ) -> Result<String, CommandError> {
@@ -559,7 +562,7 @@ pub async fn rename_note(
 /// Create a folder at the given relative path.
 #[tauri::command]
 pub async fn create_folder(
-    state: State<'_, Mutex<AppState>>,
+    state: State<'_, Arc<Mutex<AppState>>>,
     path: String,
 ) -> Result<String, CommandError> {
     let trimmed = path.trim();
@@ -580,7 +583,7 @@ pub async fn create_folder(
 
 /// Full rebuild of both the vault index and search engine.
 #[tauri::command]
-pub async fn rebuild_index(state: State<'_, Mutex<AppState>>) -> Result<(), CommandError> {
+pub async fn rebuild_index(state: State<'_, Arc<Mutex<AppState>>>) -> Result<(), CommandError> {
     let mut s = state.lock().await;
 
     // Step 1: Rebuild indexer  extract vault root path first, then mut borrow
@@ -632,7 +635,7 @@ pub async fn rebuild_index(state: State<'_, Mutex<AppState>>) -> Result<(), Comm
 /// Return metadata for a single note.
 #[tauri::command]
 pub async fn get_note(
-    state: State<'_, Mutex<AppState>>,
+    state: State<'_, Arc<Mutex<AppState>>>,
     path: String,
 ) -> Result<NoteData, CommandError> {
     let trimmed = path.trim();
@@ -654,7 +657,7 @@ pub async fn get_note(
 /// Return backlinks for a note.
 #[tauri::command]
 pub async fn get_backlinks(
-    state: State<'_, Mutex<AppState>>,
+    state: State<'_, Arc<Mutex<AppState>>>,
     path: String,
 ) -> Result<Vec<Backlink>, CommandError> {
     let trimmed = path.trim();
@@ -675,7 +678,7 @@ pub async fn get_backlinks(
 /// Return graph data (node IDs + edges) for graph visualisation.
 #[tauri::command]
 pub async fn get_graph_data(
-    state: State<'_, Mutex<AppState>>,
+    state: State<'_, Arc<Mutex<AppState>>>,
 ) -> Result<(Vec<String>, Vec<GraphEdge>), CommandError> {
     let s = state.lock().await;
     s.vault.as_ref().ok_or(CommandError::VaultNotOpen)?;
@@ -686,7 +689,7 @@ pub async fn get_graph_data(
 /// Return all tags with their note counts.
 #[tauri::command]
 pub async fn get_tags(
-    state: State<'_, Mutex<AppState>>,
+    state: State<'_, Arc<Mutex<AppState>>>,
 ) -> Result<Vec<(String, usize)>, CommandError> {
     let s = state.lock().await;
     s.vault.as_ref().ok_or(CommandError::VaultNotOpen)?;
@@ -697,7 +700,7 @@ pub async fn get_tags(
 /// Return all notes that carry the given tag.
 #[tauri::command]
 pub async fn get_notes_by_tag(
-    state: State<'_, Mutex<AppState>>,
+    state: State<'_, Arc<Mutex<AppState>>>,
     tag: String,
 ) -> Result<Vec<NoteData>, CommandError> {
     let trimmed = tag.trim();
@@ -718,7 +721,7 @@ pub async fn get_notes_by_tag(
 /// Resolve a wikilink target (with optional heading) to a file path.
 #[tauri::command]
 pub async fn resolve_wikilink(
-    state: State<'_, Mutex<AppState>>,
+    state: State<'_, Arc<Mutex<AppState>>>,
     target: String,
     heading: Option<String>,
 ) -> Result<Option<String>, CommandError> {
@@ -746,7 +749,7 @@ pub async fn resolve_wikilink(
 /// Full-text search over vault notes. Default limit 20.
 #[tauri::command]
 pub async fn search(
-    state: State<'_, Mutex<AppState>>,
+    state: State<'_, Arc<Mutex<AppState>>>,
     query: String,
     limit: Option<usize>,
 ) -> Result<Vec<crate::search::SearchResult>, CommandError> {
@@ -765,7 +768,7 @@ pub async fn search(
 /// Full-text search filtered to notes with a specific tag.
 #[tauri::command]
 pub async fn search_by_tag(
-    state: State<'_, Mutex<AppState>>,
+    state: State<'_, Arc<Mutex<AppState>>>,
     query: String,
     tag: String,
     limit: Option<usize>,
@@ -785,7 +788,7 @@ pub async fn search_by_tag(
 /// Autocomplete suggestions for a title prefix.
 #[tauri::command]
 pub async fn suggest(
-    state: State<'_, Mutex<AppState>>,
+    state: State<'_, Arc<Mutex<AppState>>>,
     prefix: String,
     limit: Option<usize>,
 ) -> Result<Vec<String>, CommandError> {
@@ -807,7 +810,7 @@ pub async fn suggest(
 
 /// Start the file watcher. Events are emitted as Tauri events on "vault-change".
 #[tauri::command]
-pub async fn start_watcher(state: State<'_, Mutex<AppState>>) -> Result<(), CommandError> {
+pub async fn start_watcher(state: State<'_, Arc<Mutex<AppState>>>) -> Result<(), CommandError> {
     let mut s = state.lock().await;
 
     // If a previous watcher task is running, cancel it first.
@@ -835,7 +838,10 @@ pub async fn start_watcher(state: State<'_, Mutex<AppState>>) -> Result<(), Comm
     let cancel_clone = cancel.clone();
     s.watcher_cancel = Some(cancel);
 
-    // Spawn task: read watcher events → emit Tauri events.
+    // Clone the Arc so the spawned task can lock state independently.
+    let state_arc = Arc::clone(state.inner());
+
+    // Spawn task: read watcher events → emit Tauri events + update indexer/search.
     // The task exits when the receiver is dropped OR the cancellation token fires.
     tokio::spawn(async move {
         let mut rx = rx;
@@ -844,22 +850,22 @@ pub async fn start_watcher(state: State<'_, Mutex<AppState>>) -> Result<(), Comm
                 event = rx.recv() => {
                     match event {
                         Some(event) => {
-                            let payload = match event {
+                            let payload = match &event {
                                 crate::watcher::WatchEvent::Created(p) => {
-                                    let rel = strip_vault_prefix(&p, &vault_root);
+                                    let rel = strip_vault_prefix(p, &vault_root);
                                     WatchEventPayload::Created { path: rel }
                                 }
                                 crate::watcher::WatchEvent::Modified(p) => {
-                                    let rel = strip_vault_prefix(&p, &vault_root);
+                                    let rel = strip_vault_prefix(p, &vault_root);
                                     WatchEventPayload::Modified { path: rel }
                                 }
                                 crate::watcher::WatchEvent::Removed(p) => {
-                                    let rel = strip_vault_prefix(&p, &vault_root);
+                                    let rel = strip_vault_prefix(p, &vault_root);
                                     WatchEventPayload::Removed { path: rel }
                                 }
                                 crate::watcher::WatchEvent::Rename { old, new } => {
-                                    let rel_old = strip_vault_prefix(&old, &vault_root);
-                                    let rel_new = strip_vault_prefix(&new, &vault_root);
+                                    let rel_old = strip_vault_prefix(old, &vault_root);
+                                    let rel_new = strip_vault_prefix(new, &vault_root);
                                     let _ = app_handle.emit(
                                         "vault-change",
                                         WatchEventPayload::Removed { path: rel_old },
@@ -871,6 +877,106 @@ pub async fn start_watcher(state: State<'_, Mutex<AppState>>) -> Result<(), Comm
                                 }
                             };
                             let _ = app_handle.emit("vault-change", payload);
+
+                            // Update backend indexer + search for .md files.
+                            match &event {
+                                crate::watcher::WatchEvent::Created(p)
+                                | crate::watcher::WatchEvent::Modified(p) => {
+                                    let rel = strip_vault_prefix(p, &vault_root);
+                                    if rel.ends_with(".md") {
+                                        let full = p.clone();
+                                        let mut s = state_arc.lock().await;
+                                        if let Some(indexer) = s.indexer.as_mut() {
+                                            let _ = indexer.index_file_at(&full, &rel);
+                                        }
+                                        if let Err(e) = reindex_search_from_note(&mut s, &rel) {
+                                            eprintln!("watcher: reindex_search error: {e}");
+                                        }
+                                    }
+                                }
+                                crate::watcher::WatchEvent::Removed(p) => {
+                                    let rel = strip_vault_prefix(p, &vault_root);
+                                    if rel.ends_with(".md") {
+                                        let mut s = state_arc.lock().await;
+                                        if let Some(indexer) = s.indexer.as_mut() {
+                                            indexer.remove_file(&rel);
+                                        }
+                                        if let Some(search) = s.search.as_mut() {
+                                            let _ = search.delete_note(&rel);
+                                            let _ = search.commit();
+                                        }
+                                    }
+                                }
+                                crate::watcher::WatchEvent::Rename { old, new } => {
+                                    let rel_old = strip_vault_prefix(old, &vault_root);
+                                    let rel_new = strip_vault_prefix(new, &vault_root);
+                                    let md_old = rel_old.ends_with(".md");
+                                    let md_new = rel_new.ends_with(".md");
+                                    if md_old || md_new {
+                                        let full_new = new.clone();
+                                        let mut s = state_arc.lock().await;
+                                        // Remove old path from index + search.
+                                        if md_old {
+                                            if let Some(indexer) = s.indexer.as_mut() {
+                                                indexer.remove_file(&rel_old);
+                                            }
+                                            if let Some(search) = s.search.as_mut() {
+                                                let _ = search.delete_note(&rel_old);
+                                            }
+                                        }
+                                        // Index new path into index + search.
+                                        if md_new {
+                                            if let Some(indexer) = s.indexer.as_mut() {
+                                                let _ = indexer.index_file_at(&full_new, &rel_new);
+                                            }
+                                            if let Err(e) = reindex_search_from_note(&mut s, &rel_new) {
+                                                eprintln!("watcher: reindex_search error: {e}");
+                                            }
+                                        }
+                                        // Single commit for both removals and additions.
+                                        if let Some(search) = s.search.as_mut() {
+                                            let _ = search.commit();
+                                        }
+                                    }
+                                }
+                                crate::watcher::WatchEvent::BulkChange { .. } => {
+                                    let mut s = state_arc.lock().await;
+                                    let root = match s.vault.as_ref() {
+                                        Some(v) => v.root().to_path_buf(),
+                                        None => continue,
+                                    };
+                                    if let Some(indexer) = s.indexer.as_mut() {
+                                        let _ = indexer.rebuild(&root);
+                                    }
+                                    // Rebuild search from the refreshed indexer.
+                                    if let (Some(vault), Some(indexer), Some(search)) = (
+                                        s.vault.as_ref(),
+                                        s.indexer.as_ref(),
+                                        s.search.as_mut(),
+                                    ) {
+                                        let idx = indexer.index();
+                                        // Delete every existing note from search first.
+                                        for rel in idx.notes.keys() {
+                                            let _ = search.delete_note(rel);
+                                        }
+                                        // Re-index all notes into search.
+                                        for (rel, note) in &idx.notes {
+                                            if let Ok(body) = vault.read_note(rel) {
+                                                let mod_dt = tantivy::DateTime::from_timestamp_micros(
+                                                    parse_iso_to_micros(note.modified.as_deref().unwrap_or("")),
+                                                );
+                                                let cre_dt = tantivy::DateTime::from_timestamp_micros(
+                                                    parse_iso_to_micros(note.created.as_deref().unwrap_or("")),
+                                                );
+                                                let _ = search.index_note(
+                                                    rel, &note.title, &body, &note.tags, mod_dt, cre_dt,
+                                                );
+                                            }
+                                        }
+                                        let _ = search.commit();
+                                    }
+                                }
+                            }
                         }
                         None => break, // channel closed
                     }
@@ -887,7 +993,7 @@ pub async fn start_watcher(state: State<'_, Mutex<AppState>>) -> Result<(), Comm
 
 /// Stop the file watcher and cancel the event-loop task.
 #[tauri::command]
-pub async fn stop_watcher(state: State<'_, Mutex<AppState>>) -> Result<(), CommandError> {
+pub async fn stop_watcher(state: State<'_, Arc<Mutex<AppState>>>) -> Result<(), CommandError> {
     let mut s = state.lock().await;
 
     // Cancel the event-loop task if present.
