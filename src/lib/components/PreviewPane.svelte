@@ -1,35 +1,35 @@
-<script lang="ts">
+<script lang="ts" module>
   import { marked } from 'marked';
+
+  marked.setOptions({ gfm: true, breaks: true });
+  const wikilinkExt = {
+    name: 'wikilink',
+    level: 'inline' as const,
+    start(src: string) { return src.indexOf('[['); },
+    tokenizer(src: string) {
+      const match = src.match(/^\[\[([^\]]+)\]\]/);
+      if (match) {
+        return { type: 'wikilink', raw: match[0], text: match[1] };
+      }
+      return undefined;
+    },
+    renderer(token: { text: string }) {
+      const esc = (s: string) => s.replace(/[&<>"']/g, (c: string) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])!);
+      return `<span class="wikilink">${esc(token.text)}</span>`;
+    },
+  };
+  marked.use({ extensions: [wikilinkExt as any] });
+</script>
+
+<script lang="ts">
+  import DOMPurify from 'dompurify';
   import { getVaultStore } from '../stores/vault.svelte';
 
   const vault = getVaultStore();
 
-  // Configure marked once (module-level, safe in Svelte 5)
-  let _configured = false;
-  if (!_configured) {
-    marked.setOptions({ gfm: true, breaks: true });
-    const wikilinkExt = {
-      name: 'wikilink',
-      level: 'inline' as const,
-      start(src: string) { return src.indexOf('[['); },
-      tokenizer(src: string) {
-        const match = src.match(/^\[\[([^\]]+)\]\]/);
-        if (match) {
-          return { type: 'wikilink', raw: match[0], text: match[1] };
-        }
-        return undefined;
-      },
-      renderer(token: { text: string }) {
-        return `<span class="wikilink">${token.text}</span>`;
-      },
-    };
-    marked.use({ extensions: [wikilinkExt as any] });
-    _configured = true;
-  }
-
   // marked() is sync when no async extensions are used
   let rendered = $derived(vault.currentNoteContent
-    ? marked.parse(vault.currentNoteContent) as string
+    ? DOMPurify.sanitize(marked.parse(vault.currentNoteContent) as string)
     : ''
   );
 </script>

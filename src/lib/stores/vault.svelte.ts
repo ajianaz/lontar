@@ -1,4 +1,5 @@
 import { vault as vaultApi, indexer as indexerApi } from '../ts/ipc';
+import { getEditorStore } from './editor.svelte';
 import type { TreeEntry, NoteData, WatchEvent } from '../ts/types';
 
 // Vault state
@@ -10,6 +11,7 @@ let currentNoteData = $state<NoteData | null>(null);
 let currentNoteContent = $state<string>('');
 let isLoading = $state(false);
 let error = $state<string | null>(null);
+let vaultOpLock = false;
 
 // File tree helpers
 function flattenFiles(entries: TreeEntry[]): string[] {
@@ -25,6 +27,8 @@ let allFiles = $derived(flattenFiles(tree));
 
 // Actions
 async function openVault(path: string) {
+  if (vaultOpLock) return;
+  vaultOpLock = true;
   isLoading = true;
   error = null;
   try {
@@ -40,10 +44,13 @@ async function openVault(path: string) {
     tree = [];
   } finally {
     isLoading = false;
+    vaultOpLock = false;
   }
 }
 
 async function closeVault() {
+  if (vaultOpLock) return;
+  vaultOpLock = true;
   try {
     await vaultApi.close();
   } catch { /* ignore */ }
@@ -53,6 +60,7 @@ async function closeVault() {
   currentNoteData = null;
   currentNoteContent = '';
   error = null;
+  vaultOpLock = false;
 }
 
 async function selectNote(path: string) {
@@ -83,9 +91,13 @@ function handleWatchEvent(event: WatchEvent) {
   }
   // Refresh tree on any change
   refreshTree();
-  // If current note was modified externally, refresh its content
+  // If current note was modified, refresh its content unless our own autosave
   if (event.path === currentNotePath && event.kind === 'modified') {
-    selectNote(event.path);
+    const editor = getEditorStore();
+    const dirtyTab = editor.tabs.some(t => t.path === event.path && t.isDirty);
+    if (!dirtyTab) {
+      selectNote(event.path);
+    }
   }
   // If current note was deleted, clear selection
   if (event.path === currentNotePath && event.kind === 'removed') {

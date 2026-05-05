@@ -25,7 +25,7 @@
 
   onMount(async () => {
     // Listen for file system watch events from Rust backend
-    unlistenWatch = await listen<WatchEvent>('watch-event', (event) => {
+    unlistenWatch = await listen<WatchEvent>('vault-change', (event) => {
       vault.handleWatchEvent(event.payload);
     });
 

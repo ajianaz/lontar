@@ -6,13 +6,14 @@ pub mod vault;
 pub mod watcher;
 
 use commands::AppState;
+use std::sync::Arc;
 use tauri::Manager;
 use tokio::sync::Mutex;
 
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(Mutex::new(AppState::default()))
+        .manage(Arc::new(Mutex::new(AppState::default())))
         .invoke_handler(tauri::generate_handler![
             // Vault
             commands::open_vault,
