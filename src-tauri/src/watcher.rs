@@ -109,7 +109,7 @@ pub struct VaultWatcher {
     tx: mpsc::UnboundedSender<WatchEvent>,
     /// Receiver half, handed out once via [`subscribe`](Self::subscribe).
     rx: Option<mpsc::UnboundedReceiver<WatchEvent>>,
-    _watcher: Option<notify::RecommendedWatcher>,
+    _watcher: Option<Box<dyn notify::Watcher>>,
     debounce_task: Option<JoinHandle<()>>,
     debounce_ms: u64,
 }
@@ -185,7 +185,43 @@ impl VaultWatcher {
         use notify::Watcher;
         watcher.watch(&self.root, notify::RecursiveMode::Recursive)?;
 
-        self._watcher = Some(watcher);
+        self._watcher = Some(Box::new(watcher));
+        Ok(())
+    }
+
+    /// Test-only variant that uses `PollWatcher` instead of the platform's
+    /// recommended watcher. `recommended_watcher` (inotify on Linux) is
+    /// unreliable in CI containers where inotify watches may silently fail.
+    #[cfg(test)]
+    pub fn start_with_poll(&mut self) -> Result<(), VaultWatcherError> {
+        use notify::PollWatcher;
+
+        let (raw_tx, raw_rx) = mpsc::unbounded_channel::<RawEvent>();
+        let out_tx = self.tx.clone();
+        let debounce_ms = self.debounce_ms;
+        let debounce_handle = tokio::spawn(async move {
+            debounce_loop(raw_rx, out_tx, debounce_ms).await;
+        });
+        self.debounce_task = Some(debounce_handle);
+
+        let root = self.root.clone();
+        let raw_tx_inner = raw_tx.clone();
+        let root_for_filter = root.clone();
+
+        let mut watcher = PollWatcher::new(
+            move |res: Result<notify::Event, notify::Error>| {
+                let event = match res {
+                    Ok(e) => e,
+                    Err(_) => return,
+                };
+                handle_notify_event(event, &root_for_filter, &raw_tx_inner);
+            },
+            notify::Config::default().with_poll_interval(Duration::from_millis(50)),
+        )?;
+
+        use notify::Watcher;
+        watcher.watch(&self.root, notify::RecursiveMode::Recursive)?;
+        self._watcher = Some(Box::new(watcher));
         Ok(())
     }
 
@@ -387,7 +423,7 @@ mod tests {
     fn start_watcher(root: &Path) -> (VaultWatcher, mpsc::UnboundedReceiver<WatchEvent>) {
         let mut w = VaultWatcher::new(root, Some(50)); // 50ms debounce for tests
         let rx = w.subscribe().expect("subscribe failed");
-        w.start().expect("watcher start failed");
+        w.start_with_poll().expect("watcher start failed");
         (w, rx)
     }
 

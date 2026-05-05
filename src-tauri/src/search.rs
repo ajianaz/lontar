@@ -4,12 +4,11 @@ use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use regex;
 use serde::Serialize;
 use tantivy::TantivyDocument;
 use tantivy::collector::TopDocs;
 use tantivy::directory::MmapDirectory;
-use tantivy::query::{QueryParser, RegexQuery};
+use tantivy::query::{QueryParser, TermPrefixQuery};
 use tantivy::schema::{FAST, Field, STORED, STRING, Schema, TEXT};
 use tantivy::{DateTime, Index, IndexReader, IndexWriter, SnippetGenerator, Term};
 
@@ -323,9 +322,8 @@ impl SearchEngine {
     pub fn suggest(&self, prefix: &str, limit: usize) -> Result<Vec<String>, SearchError> {
         let searcher = self.reader.searcher();
 
-        let escaped = regex::escape(prefix);
-        let pattern = format!("^{escaped}.*");
-        let query = RegexQuery::from_pattern(&pattern, self.title_field)?;
+        let prefix_term = tantivy::Term::from_field_text(self.title_field, prefix);
+        let query = TermPrefixQuery::new(prefix_term);
 
         let top_docs = searcher.search(&query, &TopDocs::with_limit(limit))?;
 
