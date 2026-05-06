@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [develop]
 
+# macOS build only on direct push to develop (not PRs) to save minutes
+# Internal alpha builds — unsigned, no notarization
+workflow_dispatch:
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -69,6 +73,49 @@ jobs:
       - name: Run tests
         working-directory: src-tauri
         run: cargo test --all
+
+  build-macos:
+    name: Build macOS (Apple Silicon)
+    runs-on: macos-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    needs: [frontend, backend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Build Tauri app (.dmg)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tauriScript: npm run tauri
+          args: --config src-tauri/tauri.conf.json
+
+      - name: Upload .dmg artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lontar-macos-arm64
+          path: src-tauri/target/release/bundle/dmg/*.dmg
+          retention-days: 14
 
   status-check:
     name: All checks passed
