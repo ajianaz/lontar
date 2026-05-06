@@ -15,6 +15,7 @@
   import PreviewPane from './lib/components/PreviewPane.svelte';
   import ViewModeToggle from './lib/components/ViewModeToggle.svelte';
   import GraphView from './lib/components/GraphView.svelte';
+  import VaultPicker from './lib/components/VaultPicker.svelte';
 
   const vault = getVaultStore();
   const editor = getEditorStore();
@@ -130,6 +131,7 @@
       <div class="welcome-content">
         <h1 class="app-title">Lontar</h1>
         <p class="app-subtitle">A local-first knowledge base</p>
+        <VaultPicker />
       </div>
     </div>
   {/if}

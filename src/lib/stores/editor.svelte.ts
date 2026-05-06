@@ -32,9 +32,12 @@ function openTab(path: string) {
   vault.selectNote(path);
 }
 
-function closeTab(index: number) {
+function closeTab(index: number, force = false) {
   const tab = tabs[index];
-  if (!tab || tab.isDirty) return; // Don't close dirty tabs without confirmation
+  if (!tab) return;
+  if (tab.isDirty && !force) {
+    if (!confirm(`"${tab.title}" has unsaved changes. Close anyway?`)) return;
+  }
   tabs = tabs.filter((_, i) => i !== index);
   if (tabs.length === 0) {
     activeTabIndex = -1;
@@ -65,7 +68,9 @@ function scheduleSave(content: string) {
     try {
       await vaultApi.updateNote(activeTab.path, content);
       tabs = tabs.map((t, i) => i === activeTabIndex ? { ...t, isDirty: false } : t);
-    } catch { /* silent — user will see error on next explicit save */ }
+    } catch (e) {
+      console.error('Auto-save failed:', e);
+    }
     saveTimeout = null;
   }, AUTO_SAVE_DELAY_MS);
 }

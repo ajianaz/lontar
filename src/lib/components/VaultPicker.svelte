@@ -1,21 +1,40 @@
 <script lang="ts">
   import { getVaultStore } from '../stores/vault.svelte';
+  import { getEditorStore } from '../stores/editor.svelte';
   import { open } from '@tauri-apps/plugin-dialog';
 
   const vault = getVaultStore();
+  const editor = getEditorStore();
+  let isLoading = $state(false);
 
   async function pickVault() {
-    const selected = await open({ directory: true, multiple: false });
-    if (selected && typeof selected === 'string') {
-      await vault.openVault(selected);
+    if (isLoading) return;
+    try {
+      isLoading = true;
+      const selected = await open({ directory: true, multiple: false });
+      if (selected && typeof selected === 'string') {
+        await vault.openVault(selected);
+      }
+    } catch (e) {
+      console.error('Failed to open vault:', e);
+    } finally {
+      isLoading = false;
     }
+  }
+
+  function handleCloseVault() {
+    const dirtyTabs = editor.tabs.filter(t => t.isDirty);
+    if (dirtyTabs.length > 0) {
+      if (!confirm(`You have ${dirtyTabs.length} unsaved note(s). Close vault anyway?`)) return;
+    }
+    vault.closeVault();
   }
 </script>
 
 {#if !vault.isOpen}
   <div class="vault-picker">
-    <button class="open-btn" onclick={pickVault}>
-      Open Vault
+    <button class="open-btn" onclick={pickVault} disabled={isLoading}>
+      {isLoading ? 'Opening...' : 'Open Vault'}
     </button>
     <p class="hint">Select a folder as your vault</p>
   </div>
@@ -24,7 +43,7 @@
     <span class="vault-name" title={vault.vaultPath}>
       {vault.vaultPath?.split('/').pop() || 'Vault'}
     </span>
-    <button class="close-btn" onclick={() => vault.closeVault()} title="Close vault">
+    <button class="close-btn" onclick={handleCloseVault} title="Close vault">
       ✕
     </button>
   </div>
