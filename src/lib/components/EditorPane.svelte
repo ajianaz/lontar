@@ -21,11 +21,23 @@
         onSave: () => {
           if (editor.activeTab) {
             editor.flushSave();
-            // Immediate save
-            if (vault.currentNotePath && vault.currentNoteContent) {
+            // Capture identity of the tab being saved BEFORE async call.
+            // If the user switches tabs before updateNote resolves,
+            // we must only mark the saved tab as clean — not the new active.
+            const savedPath = vault.currentNotePath;
+            const savedContent = vault.currentNoteContent;
+            if (savedPath && savedContent !== undefined) {
               import('../ts/ipc').then(({ vault: vaultApi }) => {
-                vaultApi.updateNote(vault.currentNotePath!, vault.currentNoteContent)
-                  .then(() => editor.markDirty()); // clear dirty after save
+                vaultApi.updateNote(savedPath, savedContent)
+                  .then(() => {
+                    // Only clear dirty if this tab is still active
+                    if (editor.activeTab?.path === savedPath) {
+                      editor.markClean();
+                    }
+                  })
+                  .catch(() => {
+                    // keep dirty state on failure — user can retry
+                  });
               });
             }
           }
