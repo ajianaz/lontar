@@ -27,6 +27,11 @@
     if (dirtyTabs.length > 0) {
       if (!confirm(`You have ${dirtyTabs.length} unsaved note(s). Close vault anyway?`)) return;
     }
+    // Reset editor state before closing to prevent stale tabs leaking
+    editor.flushSave();
+    for (let i = editor.tabs.length - 1; i >= 0; i--) {
+      editor.closeTab(i, true);
+    }
     vault.closeVault();
   }
 </script>
