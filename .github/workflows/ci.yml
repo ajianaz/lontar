@@ -5,10 +5,10 @@ on:
     branches: [develop]
   pull_request:
     branches: [develop]
-
-# macOS build only on direct push to develop (not PRs) to save minutes
-# Internal alpha builds — unsigned, no notarization
-workflow_dispatch:
+  # macOS build only on direct push to develop (not PRs) to save minutes
+  # Internal alpha builds — unsigned, no notarization
+  # Also allows manual trigger for ad-hoc macOS builds
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
