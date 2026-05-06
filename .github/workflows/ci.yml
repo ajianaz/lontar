@@ -77,7 +77,7 @@ jobs:
   build-macos:
     name: Build macOS (Apple Silicon)
     runs-on: macos-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/develop')
     needs: [frontend, backend]
     steps:
       - uses: actions/checkout@v4
