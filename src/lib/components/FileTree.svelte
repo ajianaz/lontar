@@ -53,10 +53,18 @@
     const { path } = contextMenu;
     contextMenu = null;
     if (!confirm(`Delete "${path}"?`)) return;
-    await vaultApi.deleteNote(path);
-    vault.refreshTree();
-    if (vault.currentNotePath === path) {
-      editor.closeTab(editor.activeTabIndex);
+    try {
+      await vaultApi.deleteNote(path);
+      vault.refreshTree();
+      // Close all tabs matching the deleted path
+      for (let i = editor.tabs.length - 1; i >= 0; i--) {
+        if (editor.tabs[i].path === path) {
+          editor.closeTab(i, true); // force close since file is deleted
+        }
+      }
+    } catch (e) {
+      console.error('Failed to delete note:', e);
+      alert(e instanceof Error ? e.message : String(e));
     }
   }
 

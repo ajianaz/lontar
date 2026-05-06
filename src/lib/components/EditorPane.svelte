@@ -35,8 +35,9 @@
                       editor.markClean();
                     }
                   })
-                  .catch(() => {
+                  .catch((err) => {
                     // keep dirty state on failure — user can retry
+                    console.error('[EditorPane] save failed:', err);
                   });
               });
             }
