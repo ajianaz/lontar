@@ -1,10 +1,8 @@
 name: CI
 
 on:
-  push:
-    branches: [develop]
   pull_request:
-    branches: [develop]
+    branches: [develop, main]
   # macOS build only on direct push to develop (not PRs) to save minutes
   # Internal alpha builds — unsigned, no notarization
   # Also allows manual trigger for ad-hoc macOS builds
